@@ -7,8 +7,6 @@ import (
 
 type directoryReleaseContainer struct {
 	path string
-
-	dirs []string
 }
 
 // NewContainerFromDir returns a release container for given file path.
@@ -18,28 +16,27 @@ func NewContainerFromDir(path string) (container ReleaseContainer, err error) {
 
 	if file != nil {
 		defer file.Close()
-		files, err := file.Readdir(0)
 
-		if err == nil {
-			var dirNames []string
-
-			for _, entry := range files {
-				if entry.IsDir() {
-					dirNames = append(dirNames, entry.Name())
-				}
-			}
-			container = &directoryReleaseContainer{
-				path: path,
-				dirs: dirNames}
-		}
+		container = &directoryReleaseContainer{path: path}
 	}
 
 	return
 }
 
 func (container *directoryReleaseContainer) Names() []string {
-	dirs := make([]string, len(container.dirs))
-	copy(dirs, container.dirs)
+	dirs := []string{}
+	file, _ := os.Open(container.path)
+
+	if file != nil {
+		defer file.Close()
+		files, _ := file.Readdir(0)
+
+		for _, entry := range files {
+			if entry.IsDir() {
+				dirs = append(dirs, entry.Name())
+			}
+		}
+	}
 
 	return dirs
 }

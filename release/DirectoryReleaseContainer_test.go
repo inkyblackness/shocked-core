@@ -44,6 +44,16 @@ func (suite *DirectoryReleaseContainerSuite) TestNamesReturnsDirectoryNames(c *c
 	c.Check(result, check.DeepEquals, []string{"release1", "release2"})
 }
 
+func (suite *DirectoryReleaseContainerSuite) TestNamesReturnsOnlineDirectoryNames(c *check.C) {
+	os.Mkdir(path.Join(suite.dynPath, "temp1"), 0755)
+	container, _ := NewContainerFromDir(suite.dynPath)
+	os.Mkdir(path.Join(suite.dynPath, "temp2"), 0755)
+	result := container.Names()
+	sort.Strings(result)
+
+	c.Check(result, check.DeepEquals, []string{"temp1", "temp2"})
+}
+
 func (suite *DirectoryReleaseContainerSuite) TestGetReturnsErrorOnUnknownRelease(c *check.C) {
 	container, _ := NewContainerFromDir(path.Join(suite.basePath, "releases"))
 	_, err := container.Get("unknown-release")
