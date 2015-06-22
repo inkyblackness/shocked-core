@@ -1,6 +1,8 @@
 package core
 
 import (
+	"sort"
+
 	"github.com/inkyblackness/shocked-core/release"
 )
 
@@ -24,7 +26,11 @@ func NewWorkspace(source release.Release, projects release.ReleaseContainer) *Wo
 }
 
 func (ws *Workspace) ProjectNames() []string {
-	return ws.projectsContainer.Names()
+	names := ws.projectsContainer.Names()
+
+	sort.Strings(names)
+
+	return names
 }
 
 func (ws *Workspace) Project(name string) (project *Project, err error) {

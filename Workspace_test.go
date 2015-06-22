@@ -16,8 +16,8 @@ type WorkspaceSuite struct {
 var _ = check.Suite(&WorkspaceSuite{})
 
 func (suite *WorkspaceSuite) SetUpTest(c *check.C) {
-	suite.source = NewTestingRelease()
-	suite.projects = NewTestingReleaseContainer()
+	suite.source = release.NewMemoryRelease()
+	suite.projects = release.NewMemoryReleaseContainer()
 	suite.projects.New("project1")
 	suite.projects.New("project2")
 }

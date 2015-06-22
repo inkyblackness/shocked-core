@@ -1,4 +1,4 @@
-package core
+package release
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"github.com/inkyblackness/res/serial"
 )
 
-type TestingResource struct {
+type memoryResource struct {
 	name string
 	path string
 
@@ -15,8 +15,8 @@ type TestingResource struct {
 	writeLocks int
 }
 
-func NewTestingResource(name string, path string, data []byte) *TestingResource {
-	res := &TestingResource{
+func NewMemoryResource(name string, path string, data []byte) Resource {
+	res := &memoryResource{
 		name: name,
 		path: path,
 		data: data}
@@ -25,17 +25,17 @@ func NewTestingResource(name string, path string, data []byte) *TestingResource 
 }
 
 // Name returns the unique identifier - the file name of the resource.
-func (res *TestingResource) Name() string {
+func (res *memoryResource) Name() string {
 	return res.name
 }
 
 // Path returns the (relative) path for the resource, based on the release's root.
-func (res *TestingResource) Path() string {
+func (res *memoryResource) Path() string {
 	return res.path
 }
 
 // AsSource returns an interface for reading the resource.
-func (res *TestingResource) AsSource() (buf serial.SeekingReadCloser, err error) {
+func (res *memoryResource) AsSource() (buf serial.SeekingReadCloser, err error) {
 	if res.writeLocks == 0 {
 		res.readLocks++
 		buf = serial.NewByteStoreFromData(res.data, func([]byte) { res.readLocks-- })
@@ -47,10 +47,10 @@ func (res *TestingResource) AsSource() (buf serial.SeekingReadCloser, err error)
 }
 
 // AsSink returns an interface for writing the resource.
-func (res *TestingResource) AsSink() (buf serial.SeekingWriteCloser, err error) {
+func (res *memoryResource) AsSink() (buf serial.SeekingWriteCloser, err error) {
 	if res.readLocks == 0 && res.writeLocks == 0 {
 		res.writeLocks++
-		buf = serial.NewByteStoreFromData(res.data, func(data []byte) {
+		buf = serial.NewByteStoreFromData(nil, func(data []byte) {
 			res.data = data
 			res.writeLocks--
 		})

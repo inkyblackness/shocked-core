@@ -1,23 +1,22 @@
-package core
+package release
 
 import (
 	"fmt"
-
-	"github.com/inkyblackness/shocked-core/release"
 )
 
-type TestingReleaseContainer struct {
-	releases map[string]*TestingRelease
+type memoryReleaseContainer struct {
+	releases map[string]Release
 }
 
-func NewTestingReleaseContainer() *TestingReleaseContainer {
-	return &TestingReleaseContainer{releases: make(map[string]*TestingRelease)}
+// NewMemoryReleaseContainer returns a ReleaseContainer for releases only in memory.
+func NewMemoryReleaseContainer() ReleaseContainer {
+	return &memoryReleaseContainer{releases: make(map[string]Release)}
 }
 
 // Names returns the list of currently known releases.
-func (container *TestingReleaseContainer) Names() []string {
+func (container *memoryReleaseContainer) Names() []string {
 	names := make([]string, 0, len(container.releases))
-	for name, _ := range container.releases {
+	for name := range container.releases {
 		names = append(names, name)
 	}
 
@@ -25,7 +24,7 @@ func (container *TestingReleaseContainer) Names() []string {
 }
 
 // Get returns the release with given name, or an error if not possible.
-func (container *TestingReleaseContainer) Get(name string) (rel release.Release, err error) {
+func (container *memoryReleaseContainer) Get(name string) (rel Release, err error) {
 	rel, existing := container.releases[name]
 	if !existing {
 		err = fmt.Errorf("Not found")
@@ -35,13 +34,14 @@ func (container *TestingReleaseContainer) Get(name string) (rel release.Release,
 }
 
 // New creates a new release with given name and returns it, or an error if not possible.
-func (container *TestingReleaseContainer) New(name string) (rel release.Release, err error) {
+func (container *memoryReleaseContainer) New(name string) (rel Release, err error) {
 	rel, existing := container.releases[name]
 	if !existing {
-		testingRel := NewTestingRelease()
+		testingRel := NewMemoryRelease()
 		rel = testingRel
 		container.releases[name] = testingRel
 	} else {
+		rel = nil
 		err = fmt.Errorf("Release exists")
 	}
 
