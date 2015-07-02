@@ -39,8 +39,10 @@ func (ws *Workspace) Project(name string) (project *Project, err error) {
 	if !existing {
 		rel, relErr := ws.projectsContainer.Get(name)
 		if relErr == nil {
-			project = NewProject(name, ws.source, rel)
-			ws.projects[name] = project
+			project, err = NewProject(name, ws.source, rel)
+			if err == nil {
+				ws.projects[name] = project
+			}
 		} else {
 			err = relErr
 		}
@@ -53,8 +55,10 @@ func (ws *Workspace) NewProject(name string) (project *Project, err error) {
 	rel, err := ws.projectsContainer.New(name)
 
 	if err == nil {
-		project = NewProject(name, ws.source, rel)
-		ws.projects[name] = project
+		project, err = NewProject(name, ws.source, rel)
+		if err == nil {
+			ws.projects[name] = project
+		}
 	}
 
 	return

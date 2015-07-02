@@ -11,21 +11,21 @@ import (
 	check "gopkg.in/check.v1"
 )
 
-type StoreFactorySuite struct {
+type ReleaseStoreFactorySuite struct {
 	source  release.Release
 	sink    release.Release
-	factory *StoreFactory
+	factory StoreFactory
 }
 
-var _ = check.Suite(&StoreFactorySuite{})
+var _ = check.Suite(&ReleaseStoreFactorySuite{})
 
-func (suite *StoreFactorySuite) SetUpTest(c *check.C) {
+func (suite *ReleaseStoreFactorySuite) SetUpTest(c *check.C) {
 	suite.source = release.NewMemoryRelease()
 	suite.sink = release.NewMemoryRelease()
-	suite.factory = NewStoreFactory(suite.source, suite.sink)
+	suite.factory = NewReleaseStoreFactory(suite.source, suite.sink)
 }
 
-func (suite *StoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExisting(c *check.C) {
+func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExisting(c *check.C) {
 	resource, _ := suite.sink.NewResource("fromSink.res", "")
 
 	{
@@ -42,7 +42,7 @@ func (suite *StoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExisting(c *che
 	c.Check(blockStore.BlockCount(), check.Equals, uint16(1))
 }
 
-func (suite *StoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExistingInBoth(c *check.C) {
+func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExistingInBoth(c *check.C) {
 	resource1, _ := suite.source.NewResource("stillFromSink.res", "")
 
 	{
@@ -66,7 +66,7 @@ func (suite *StoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExistingInBoth(
 	c.Check(blockStore.BlockCount(), check.Equals, uint16(1))
 }
 
-func (suite *StoreFactorySuite) TestNewChunkStoreIsBackedBySourceIfExisting(c *check.C) {
+func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySourceIfExisting(c *check.C) {
 	resource, _ := suite.source.NewResource("fromSource.res", "")
 
 	{
@@ -83,7 +83,7 @@ func (suite *StoreFactorySuite) TestNewChunkStoreIsBackedBySourceIfExisting(c *c
 	c.Check(blockStore.BlockCount(), check.Equals, uint16(1))
 }
 
-func (suite *StoreFactorySuite) TestNewChunkStoreReturnsEmptyStoreIfNowhereExisting(c *check.C) {
+func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreReturnsEmptyStoreIfNowhereExisting(c *check.C) {
 	store, err := suite.factory.NewChunkStore("empty.res")
 
 	c.Assert(err, check.IsNil)
