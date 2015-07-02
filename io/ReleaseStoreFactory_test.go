@@ -25,15 +25,18 @@ func (suite *ReleaseStoreFactorySuite) SetUpTest(c *check.C) {
 	suite.factory = NewReleaseStoreFactory(suite.source, suite.sink)
 }
 
-func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExisting(c *check.C) {
-	resource, _ := suite.sink.NewResource("fromSink.res", "")
+func (suite *ReleaseStoreFactorySuite) createChunkResource(rel release.Release, name string, filler func(consumer chunk.Consumer)) {
+	resource, _ := rel.NewResource(name, "")
+	writer, _ := resource.AsSink()
+	consumer := dos.NewChunkConsumer(writer)
+	filler(consumer)
+	consumer.Finish()
+}
 
-	{
-		writer, _ := resource.AsSink()
-		consumer := dos.NewChunkConsumer(writer)
+func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExisting(c *check.C) {
+	suite.createChunkResource(suite.sink, "fromSink.res", func(consumer chunk.Consumer) {
 		consumer.Consume(res.ResourceID(1), chunk.NewBlockHolder(chunk.BasicChunkType, res.Palette, [][]byte{[]byte{}}))
-		consumer.Finish()
-	}
+	})
 	store, err := suite.factory.NewChunkStore("fromSink.res")
 
 	c.Assert(err, check.IsNil)
@@ -43,21 +46,10 @@ func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExisting
 }
 
 func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExistingInBoth(c *check.C) {
-	resource1, _ := suite.source.NewResource("stillFromSink.res", "")
-
-	{
-		writer, _ := resource1.AsSink()
-		consumer := dos.NewChunkConsumer(writer)
-		consumer.Finish()
-	}
-	resource2, _ := suite.sink.NewResource("stillFromSink.res", "")
-
-	{
-		writer, _ := resource2.AsSink()
-		consumer := dos.NewChunkConsumer(writer)
+	suite.createChunkResource(suite.source, "stillFromSink.res", func(consumer chunk.Consumer) {})
+	suite.createChunkResource(suite.sink, "stillFromSink.res", func(consumer chunk.Consumer) {
 		consumer.Consume(res.ResourceID(1), chunk.NewBlockHolder(chunk.BasicChunkType, res.Palette, [][]byte{[]byte{}}))
-		consumer.Finish()
-	}
+	})
 	store, err := suite.factory.NewChunkStore("stillFromSink.res")
 
 	c.Assert(err, check.IsNil)
@@ -67,14 +59,9 @@ func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySinkIfExisting
 }
 
 func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreIsBackedBySourceIfExisting(c *check.C) {
-	resource, _ := suite.source.NewResource("fromSource.res", "")
-
-	{
-		writer, _ := resource.AsSink()
-		consumer := dos.NewChunkConsumer(writer)
+	suite.createChunkResource(suite.source, "fromSource.res", func(consumer chunk.Consumer) {
 		consumer.Consume(res.ResourceID(1), chunk.NewBlockHolder(chunk.BasicChunkType, res.Palette, [][]byte{[]byte{}}))
-		consumer.Finish()
-	}
+	})
 	store, err := suite.factory.NewChunkStore("fromSource.res")
 
 	c.Assert(err, check.IsNil)
