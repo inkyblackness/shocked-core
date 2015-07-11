@@ -4,6 +4,7 @@ import (
 	"github.com/inkyblackness/res/chunk"
 	"github.com/inkyblackness/res/chunk/dos"
 	"github.com/inkyblackness/res/chunk/store"
+	"github.com/inkyblackness/res/serial"
 	"github.com/inkyblackness/shocked-core/release"
 )
 
@@ -36,9 +37,11 @@ func (factory *ReleaseStoreFactory) openChunkStoreFrom(rel release.Release, name
 	resource, err := rel.GetResource(name)
 
 	if err == nil {
-		reader, err := resource.AsSource()
+		var reader serial.SeekingReadCloser
+		reader, err = resource.AsSource()
 		if err == nil {
-			provider, err := dos.NewChunkProvider(reader)
+			var provider chunk.Provider
+			provider, err = dos.NewChunkProvider(reader)
 			if err == nil {
 				chunkStore = store.NewProviderBacked(provider, func() {})
 			}
