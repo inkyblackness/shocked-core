@@ -76,3 +76,12 @@ func (suite *FileResourceSuite) TestAsSinkReturnsObjectForNewFile(c *check.C) {
 
 	c.Check(file, check.NotNil)
 }
+
+func (suite *FileResourceSuite) TestAsSinkCreatesDirectoriesForNewFile(c *check.C) {
+	resource := newFileResource("test1.res", suite.basePath, "dynamic/created", "newFile.bin")
+	file, err := resource.AsSink()
+	c.Assert(err, check.IsNil)
+	defer file.Close()
+
+	c.Check(file, check.NotNil)
+}

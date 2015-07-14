@@ -38,5 +38,6 @@ func (resource *fileResource) AsSource() (serial.SeekingReadCloser, error) {
 }
 
 func (resource *fileResource) AsSink() (serial.SeekingWriteCloser, error) {
+	os.MkdirAll(filepath.Join(resource.basePath, resource.relativePath), os.FileMode(0755))
 	return os.Create(filepath.Join(resource.basePath, resource.relativePath, resource.filename))
 }
