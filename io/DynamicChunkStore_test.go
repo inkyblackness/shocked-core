@@ -93,9 +93,9 @@ func (suite *DynamicChunkStoreSuite) TestBlockHolderModifiesWrapped(c *check.C) 
 
 	data := []byte{0x01, 0x02}
 	holder := store.Get(res.ResourceID(1))
-	holder.Put(0, data)
+	holder.SetBlockData(0, data)
 
-	c.Check(wrappedStore.Get(res.ResourceID(1)).Get(0), check.DeepEquals, data)
+	c.Check(wrappedStore.Get(res.ResourceID(1)).BlockData(0), check.DeepEquals, data)
 }
 
 func (suite *DynamicChunkStoreSuite) TestSwapReplacesWrapped(c *check.C) {
@@ -129,7 +129,7 @@ func (suite *DynamicChunkStoreSuite) TestBlockHolderModifiesWrappedAfterSwap(c *
 	testStore.Swap(func(oldStore chunk.Store) chunk.Store { return wrapped2 })
 
 	data := []byte{0x01, 0x02}
-	holder.Put(0, data)
+	holder.SetBlockData(0, data)
 
-	c.Check(wrapped2.Get(res.ResourceID(1)).Get(0), check.DeepEquals, data)
+	c.Check(wrapped2.Get(res.ResourceID(1)).BlockData(0), check.DeepEquals, data)
 }

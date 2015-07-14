@@ -43,18 +43,18 @@ func (store *dynamicBlockStore) BlockCount() (result uint16) {
 	return
 }
 
-// Get returns the data for the requested block index.
-func (store *dynamicBlockStore) Get(block uint16) (result []byte) {
+// BlockData returns the data for the requested block index.
+func (store *dynamicBlockStore) BlockData(block uint16) (result []byte) {
 	store.retrieve(func(wrapped chunk.BlockStore) {
-		result = wrapped.Get(block)
+		result = wrapped.BlockData(block)
 	})
 
 	return
 }
 
-// Put sets the data for the requested block index.
-func (store *dynamicBlockStore) Put(block uint16, data []byte) {
+// SetBlockData sets the data for the requested block index.
+func (store *dynamicBlockStore) SetBlockData(block uint16, data []byte) {
 	store.retrieve(func(wrapped chunk.BlockStore) {
-		wrapped.Put(block, data)
+		wrapped.SetBlockData(block, data)
 	})
 }

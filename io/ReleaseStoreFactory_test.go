@@ -1,6 +1,8 @@
 package io
 
 import (
+	"time"
+
 	"github.com/inkyblackness/res"
 	"github.com/inkyblackness/res/chunk"
 	"github.com/inkyblackness/res/chunk/dos"
@@ -77,4 +79,20 @@ func (suite *ReleaseStoreFactorySuite) TestNewChunkStoreReturnsEmptyStoreIfNowhe
 	c.Assert(store, check.NotNil)
 	ids := store.IDs()
 	c.Check(len(ids), check.Equals, 0)
+}
+
+func (suite *ReleaseStoreFactorySuite) TestModifyingSourceSavesNewSink(c *check.C) {
+	suite.createChunkResource(suite.source, "source.res", func(consumer chunk.Consumer) {
+		consumer.Consume(res.ResourceID(1), chunk.NewBlockHolder(chunk.BasicChunkType, res.Palette, [][]byte{[]byte{}}))
+	})
+	store, err := suite.factory.NewChunkStore("source.res")
+
+	c.Assert(err, check.IsNil)
+	c.Assert(store, check.NotNil)
+
+	store.Del(res.ResourceID(1))
+
+	time.Sleep(100 * time.Millisecond)
+
+	c.Check(suite.sink.HasResource("source.res"), check.Equals, true)
 }
