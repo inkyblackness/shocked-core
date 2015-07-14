@@ -38,15 +38,34 @@ func (textures *Textures) Properties(index int) model.TextureProperties {
 		names := textures.cybstrng[i].Get(res.ResourceID(0x086A))
 		cantBeUseds := textures.cybstrng[i].Get(res.ResourceID(0x086B))
 
-		prop.Name[i] = textures.DecodeString(names.Get(uint16(index)))
-		prop.CantBeUsed[i] = textures.DecodeString(cantBeUseds.Get(uint16(index)))
+		prop.Name[i] = textures.DecodeString(names.BlockData(uint16(index)))
+		prop.CantBeUsed[i] = textures.DecodeString(cantBeUseds.BlockData(uint16(index)))
 	}
 
 	return prop
+}
+
+func (textures *Textures) SetProperties(index int, prop model.TextureProperties) {
+	for i := 0; i < model.LanguageCount; i++ {
+		if prop.Name[i] != nil {
+			names := textures.cybstrng[i].Get(res.ResourceID(0x086A))
+			names.SetBlockData(uint16(index), textures.EncodeString(prop.Name[i]))
+		}
+		if prop.CantBeUsed[i] != nil {
+			cantBeUseds := textures.cybstrng[i].Get(res.ResourceID(0x086B))
+			cantBeUseds.SetBlockData(uint16(index), textures.EncodeString(prop.CantBeUsed[i]))
+		}
+	}
 }
 
 func (textures *Textures) DecodeString(data []byte) *string {
 	value := textures.cp.Decode(data[0 : len(data)-1])
 
 	return &value
+}
+
+func (textures *Textures) EncodeString(value *string) []byte {
+	data := textures.cp.Encode(*value)
+
+	return append(data, 0x00)
 }
