@@ -1,6 +1,9 @@
 package io
 
 import (
+	"log"
+	"time"
+
 	"github.com/inkyblackness/res/chunk"
 	"github.com/inkyblackness/res/chunk/dos"
 	"github.com/inkyblackness/res/chunk/store"
@@ -9,14 +12,16 @@ import (
 )
 
 type ReleaseStoreFactory struct {
-	source release.Release
-	sink   release.Release
+	source      release.Release
+	sink        release.Release
+	timeoutMSec int
 }
 
-func NewReleaseStoreFactory(source release.Release, sink release.Release) StoreFactory {
+func NewReleaseStoreFactory(source release.Release, sink release.Release, timeoutMSec int) StoreFactory {
 	factory := &ReleaseStoreFactory{
-		source: source,
-		sink:   sink}
+		source:      source,
+		sink:        sink,
+		timeoutMSec: timeoutMSec}
 
 	return factory
 }
@@ -52,27 +57,37 @@ func (factory *ReleaseStoreFactory) openChunkStoreFrom(rel release.Release, name
 }
 
 func (factory *ReleaseStoreFactory) createSavingStore(provider chunk.Provider, path string, name string, closer func()) chunk.Store {
-	nullStore := store.NewProviderBacked(chunk.NullProvider(), func() {})
-	chunkStore := NewDynamicChunkStore(nullStore)
+	storeChanged := make(chan interface{})
+	onStoreChanged := func() { storeChanged <- nil }
+	chunkStore := NewDynamicChunkStore(store.NewProviderBacked(provider, onStoreChanged))
 
 	closeLastReader := closer
-
-	var resave func()
-	resave = func() {
-		go chunkStore.Swap(func(oldStore chunk.Store) chunk.Store {
+	saveAndSwap := func() {
+		chunkStore.Swap(func(oldStore chunk.Store) chunk.Store {
+			log.Printf("Saving resource <%s>/<%s>\n", path, name)
 			data := factory.serializeStore(oldStore)
 			closeLastReader()
 
 			newProvider, newReader := factory.saveAndReload(data, path, name)
 			closeLastReader = func() { newReader.Close() }
 
-			return store.NewProviderBacked(newProvider, resave)
+			return store.NewProviderBacked(newProvider, onStoreChanged)
 		})
 	}
 
-	chunkStore.Swap(func(chunk.Store) chunk.Store {
-		return store.NewProviderBacked(provider, resave)
-	})
+	go func() {
+		for true {
+			<-storeChanged
+			for saved := false; !saved; {
+				select {
+				case <-storeChanged:
+				case <-time.After(time.Duration(factory.timeoutMSec) * time.Millisecond):
+					saveAndSwap()
+					saved = true
+				}
+			}
+		}
+	}()
 
 	return chunkStore
 }
@@ -96,8 +111,10 @@ func (factory *ReleaseStoreFactory) saveAndReload(data []byte, path string, name
 	var err error
 
 	if factory.sink.HasResource(name) {
+		log.Printf("Sink has resource <%s>, acquiring\n", name)
 		newResource, err = factory.sink.GetResource(name)
 	} else {
+		log.Printf("Creating sink resource <%s>\n", name)
 		newResource, err = factory.sink.NewResource(name, path)
 	}
 	if err == nil {
@@ -120,6 +137,7 @@ func (factory *ReleaseStoreFactory) saveAndReload(data []byte, path string, name
 		}
 	}
 	if err != nil {
+		log.Printf("Failed to store in sink, buffering: %v\n", err)
 		reader = serial.NewByteStoreFromData(data, func([]byte) {})
 		provider, _ = dos.NewChunkProvider(reader)
 	}

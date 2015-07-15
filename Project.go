@@ -16,7 +16,7 @@ type Project struct {
 }
 
 func NewProject(name string, source release.Release, sink release.Release) (project *Project, err error) {
-	factory := io.NewReleaseStoreFactory(source, sink)
+	factory := io.NewReleaseStoreFactory(source, sink, 5000)
 	textures, err := NewTextures(factory)
 
 	if err == nil {

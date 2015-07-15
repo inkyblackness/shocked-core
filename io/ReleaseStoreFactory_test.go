@@ -24,7 +24,7 @@ var _ = check.Suite(&ReleaseStoreFactorySuite{})
 func (suite *ReleaseStoreFactorySuite) SetUpTest(c *check.C) {
 	suite.source = release.NewMemoryRelease()
 	suite.sink = release.NewMemoryRelease()
-	suite.factory = NewReleaseStoreFactory(suite.source, suite.sink)
+	suite.factory = NewReleaseStoreFactory(suite.source, suite.sink, 0)
 }
 
 func (suite *ReleaseStoreFactorySuite) createChunkResource(rel release.Release, name string, filler func(consumer chunk.Consumer)) {
