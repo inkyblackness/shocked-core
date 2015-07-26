@@ -13,11 +13,11 @@ type Textures struct {
 	cp       text.Codepage
 }
 
-func NewTextures(factory io.StoreFactory) (textures *Textures, err error) {
+func NewTextures(library io.StoreLibrary) (textures *Textures, err error) {
 	var cybstrng [model.LanguageCount]chunk.Store
 
 	for i := 0; i < model.LanguageCount && err == nil; i++ {
-		cybstrng[i], err = factory.NewChunkStore(localized[i].cybstrng)
+		cybstrng[i], err = library.ChunkStore(localized[i].cybstrng)
 	}
 
 	if err == nil {

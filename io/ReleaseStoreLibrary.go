@@ -11,34 +11,45 @@ import (
 	"github.com/inkyblackness/shocked-core/release"
 )
 
-type ReleaseStoreFactory struct {
+type ReleaseStoreLibrary struct {
 	source      release.Release
 	sink        release.Release
 	timeoutMSec int
+	chunkStores map[string]chunk.Store
 }
 
-func NewReleaseStoreFactory(source release.Release, sink release.Release, timeoutMSec int) StoreFactory {
-	factory := &ReleaseStoreFactory{
+// NewReleaseStoreLibrary returns a StoreLibrary that covers two Release container.
+// Stores are first tried from the sink, then from source; They are saved in the sink.
+func NewReleaseStoreLibrary(source release.Release, sink release.Release, timeoutMSec int) StoreLibrary {
+	library := &ReleaseStoreLibrary{
 		source:      source,
 		sink:        sink,
-		timeoutMSec: timeoutMSec}
+		timeoutMSec: timeoutMSec,
+		chunkStores: make(map[string]chunk.Store)}
 
-	return factory
+	return library
 }
 
-func (factory *ReleaseStoreFactory) NewChunkStore(name string) (chunkStore chunk.Store, err error) {
-	if factory.sink.HasResource(name) {
-		chunkStore, err = factory.openChunkStoreFrom(factory.sink, name)
-	} else if factory.source.HasResource(name) {
-		chunkStore, err = factory.openChunkStoreFrom(factory.source, name)
-	} else {
-		chunkStore = factory.createSavingStore(chunk.NullProvider(), "", name, func() {})
+func (library *ReleaseStoreLibrary) ChunkStore(name string) (chunkStore chunk.Store, err error) {
+	chunkStore, exists := library.chunkStores[name]
+
+	if !exists {
+		if library.sink.HasResource(name) {
+			chunkStore, err = library.openChunkStoreFrom(library.sink, name)
+		} else if library.source.HasResource(name) {
+			chunkStore, err = library.openChunkStoreFrom(library.source, name)
+		} else {
+			chunkStore = library.createSavingChunkStore(chunk.NullProvider(), "", name, func() {})
+		}
+		if err == nil {
+			library.chunkStores[name] = chunkStore
+		}
 	}
 
 	return
 }
 
-func (factory *ReleaseStoreFactory) openChunkStoreFrom(rel release.Release, name string) (chunkStore chunk.Store, err error) {
+func (library *ReleaseStoreLibrary) openChunkStoreFrom(rel release.Release, name string) (chunkStore chunk.Store, err error) {
 	resource, err := rel.GetResource(name)
 
 	if err == nil {
@@ -48,7 +59,7 @@ func (factory *ReleaseStoreFactory) openChunkStoreFrom(rel release.Release, name
 			var provider chunk.Provider
 			provider, err = dos.NewChunkProvider(reader)
 			if err == nil {
-				chunkStore = factory.createSavingStore(provider, resource.Path(), name, func() { reader.Close() })
+				chunkStore = library.createSavingChunkStore(provider, resource.Path(), name, func() { reader.Close() })
 			}
 		}
 	}
@@ -56,7 +67,7 @@ func (factory *ReleaseStoreFactory) openChunkStoreFrom(rel release.Release, name
 	return
 }
 
-func (factory *ReleaseStoreFactory) createSavingStore(provider chunk.Provider, path string, name string, closer func()) chunk.Store {
+func (library *ReleaseStoreLibrary) createSavingChunkStore(provider chunk.Provider, path string, name string, closer func()) chunk.Store {
 	storeChanged := make(chan interface{})
 	onStoreChanged := func() { storeChanged <- nil }
 	chunkStore := NewDynamicChunkStore(store.NewProviderBacked(provider, onStoreChanged))
@@ -65,10 +76,10 @@ func (factory *ReleaseStoreFactory) createSavingStore(provider chunk.Provider, p
 	saveAndSwap := func() {
 		chunkStore.Swap(func(oldStore chunk.Store) chunk.Store {
 			log.Printf("Saving resource <%s>/<%s>\n", path, name)
-			data := factory.serializeStore(oldStore)
+			data := library.serializeStore(oldStore)
 			closeLastReader()
 
-			newProvider, newReader := factory.saveAndReload(data, path, name)
+			newProvider, newReader := library.saveAndReload(data, path, name)
 			closeLastReader = func() { newReader.Close() }
 
 			return store.NewProviderBacked(newProvider, onStoreChanged)
@@ -81,7 +92,7 @@ func (factory *ReleaseStoreFactory) createSavingStore(provider chunk.Provider, p
 			for saved := false; !saved; {
 				select {
 				case <-storeChanged:
-				case <-time.After(time.Duration(factory.timeoutMSec) * time.Millisecond):
+				case <-time.After(time.Duration(library.timeoutMSec) * time.Millisecond):
 					saveAndSwap()
 					saved = true
 				}
@@ -92,7 +103,7 @@ func (factory *ReleaseStoreFactory) createSavingStore(provider chunk.Provider, p
 	return chunkStore
 }
 
-func (factory *ReleaseStoreFactory) serializeStore(store chunk.Store) []byte {
+func (library *ReleaseStoreLibrary) serializeStore(store chunk.Store) []byte {
 	buffer := serial.NewByteStore()
 	consumer := dos.NewChunkConsumer(buffer)
 	ids := store.IDs()
@@ -106,16 +117,16 @@ func (factory *ReleaseStoreFactory) serializeStore(store chunk.Store) []byte {
 	return buffer.Data()
 }
 
-func (factory *ReleaseStoreFactory) saveAndReload(data []byte, path string, name string) (provider chunk.Provider, reader serial.SeekingReadCloser) {
+func (library *ReleaseStoreLibrary) saveAndReload(data []byte, path string, name string) (provider chunk.Provider, reader serial.SeekingReadCloser) {
 	var newResource release.Resource
 	var err error
 
-	if factory.sink.HasResource(name) {
+	if library.sink.HasResource(name) {
 		log.Printf("Sink has resource <%s>, acquiring\n", name)
-		newResource, err = factory.sink.GetResource(name)
+		newResource, err = library.sink.GetResource(name)
 	} else {
 		log.Printf("Creating sink resource <%s>\n", name)
-		newResource, err = factory.sink.NewResource(name, path)
+		newResource, err = library.sink.NewResource(name, path)
 	}
 	if err == nil {
 		var newSink serial.SeekingWriteCloser

@@ -10,21 +10,21 @@ type Project struct {
 	source release.Release
 	sink   release.Release
 
-	factory io.StoreFactory
+	library io.StoreLibrary
 
 	textures *Textures
 }
 
 func NewProject(name string, source release.Release, sink release.Release) (project *Project, err error) {
-	factory := io.NewReleaseStoreFactory(source, sink, 5000)
-	textures, err := NewTextures(factory)
+	library := io.NewReleaseStoreLibrary(source, sink, 5000)
+	textures, err := NewTextures(library)
 
 	if err == nil {
 		project = &Project{
 			name:     name,
 			source:   source,
 			sink:     sink,
-			factory:  factory,
+			library:  library,
 			textures: textures}
 	}
 
