@@ -13,11 +13,19 @@ type Project struct {
 	library io.StoreLibrary
 
 	textures *Textures
+	palettes *Palettes
 }
 
 func NewProject(name string, source release.Release, sink release.Release) (project *Project, err error) {
 	library := io.NewReleaseStoreLibrary(source, sink, 5000)
-	textures, err := NewTextures(library)
+	var textures *Textures
+	var palettes *Palettes
+
+	textures, err = NewTextures(library)
+
+	if err == nil {
+		palettes, err = NewPalettes(library)
+	}
 
 	if err == nil {
 		project = &Project{
@@ -25,7 +33,8 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 			source:   source,
 			sink:     sink,
 			library:  library,
-			textures: textures}
+			textures: textures,
+			palettes: palettes}
 	}
 
 	return
@@ -33,4 +42,8 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 
 func (project *Project) Textures() *Textures {
 	return project.textures
+}
+
+func (project *Project) Palettes() *Palettes {
+	return project.palettes
 }
