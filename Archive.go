@@ -1,6 +1,8 @@
 package core
 
 import (
+	"sync"
+
 	"github.com/inkyblackness/res"
 	"github.com/inkyblackness/res/chunk"
 
@@ -9,7 +11,11 @@ import (
 
 // Archive wraps a map archive
 type Archive struct {
+	mutex sync.Mutex
+
 	store chunk.Store
+
+	levels [MaximumLevelsPerArchive]*Level
 }
 
 // NewArchive creates a new archive wrapper for given store name. This wrapper is
@@ -32,6 +38,9 @@ func (archive *Archive) HasLevel(id int) bool {
 }
 
 func (archive *Archive) LevelIDs() (result []int) {
+	archive.mutex.Lock()
+	defer archive.mutex.Unlock()
+
 	for i := 0; i < MaximumLevelsPerArchive; i++ {
 		if archive.HasLevel(i) {
 			result = append(result, i)
@@ -43,8 +52,16 @@ func (archive *Archive) LevelIDs() (result []int) {
 
 // Level returns a level wrapper should the given ID refer to a valid level.
 func (archive *Archive) Level(id int) (level *Level) {
+	archive.mutex.Lock()
+	defer archive.mutex.Unlock()
+
 	if archive.HasLevel(id) {
-		level = NewLevel(archive.store, id)
+		level = archive.levels[id]
+
+		if level == nil {
+			level = NewLevel(archive.store, id)
+			archive.levels[id] = level
+		}
 	}
 
 	return
