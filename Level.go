@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/binary"
+	"sync"
 
 	"github.com/inkyblackness/res"
 	"github.com/inkyblackness/res/chunk"
@@ -35,11 +36,26 @@ var tileTypes = map[data.TileType]model.TileType{
 	data.RidgeSouthEastToNorthWest: model.RidgeSouthEastToNorthWest,
 	data.RidgeSouthWestToNorthEast: model.RidgeSouthWestToNorthEast}
 
+func tileType(modelType model.TileType) (dataType data.TileType) {
+	dataType = data.Solid
+
+	for key, value := range tileTypes {
+		if value == modelType {
+			dataType = key
+		}
+	}
+
+	return
+}
+
 type Level struct {
 	id    int
 	store chunk.Store
 
-	tileMap []data.TileMapEntry
+	mutex sync.Mutex
+
+	tileMapStore chunk.BlockStore
+	tileMap      []data.TileMapEntry
 }
 
 func NewLevel(store chunk.Store, id int) *Level {
@@ -50,12 +66,20 @@ func (level *Level) bufferTileData() []data.TileMapEntry {
 	if level.tileMap == nil {
 		level.tileMap = make([]data.TileMapEntry, 64*64)
 
-		blockData := level.store.Get(res.ResourceID(4000 + level.id*100 + 5)).BlockData(0)
+		level.tileMapStore = level.store.Get(res.ResourceID(4000 + level.id*100 + 5))
+		blockData := level.tileMapStore.BlockData(0)
 		reader := bytes.NewReader(blockData)
 		binary.Read(reader, binary.LittleEndian, &level.tileMap)
 	}
 
 	return level.tileMap
+}
+
+func (level *Level) onTileDataChanged() {
+	buf := bytes.NewBuffer(nil)
+
+	binary.Write(buf, binary.LittleEndian, &level.tileMap)
+	level.tileMapStore.SetBlockData(0, buf.Bytes())
 }
 
 func (level *Level) ID() int {
@@ -88,13 +112,20 @@ func (level *Level) Textures() (result []int) {
 }
 
 func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
 	entries := level.bufferTileData()
 
 	entry := entries[y*64+x]
-	result.Type = tileTypes[entry.Type]
-	result.SlopeHeight = model.HeightUnit(entry.SlopeHeight)
-	result.FloorHeight = model.HeightUnit(entry.Floor & 0x1F)
-	result.CeilingHeight = model.HeightUnit(entry.Ceiling & 0x1F)
+	result.Type = new(model.TileType)
+	*result.Type = tileTypes[entry.Type]
+	result.SlopeHeight = new(model.HeightUnit)
+	*result.SlopeHeight = model.HeightUnit(entry.SlopeHeight)
+	result.FloorHeight = new(model.HeightUnit)
+	*result.FloorHeight = model.HeightUnit(entry.Floor & 0x1F)
+	result.CeilingHeight = new(model.HeightUnit)
+	*result.CeilingHeight = model.HeightUnit(entry.Ceiling & 0x1F)
 
 	{
 		var properties model.RealWorldTileProperties
@@ -109,4 +140,27 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 	}
 
 	return
+}
+
+func (level *Level) SetTileProperties(x, y int, properties model.TileProperties) {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
+	entries := level.bufferTileData()
+
+	entry := &entries[y*64+x]
+	if properties.Type != nil {
+		entry.Type = tileType(*properties.Type)
+	}
+	if properties.FloorHeight != nil {
+		entry.Floor = (entry.Floor & 0xE0) | (byte(*properties.FloorHeight) & 0x1F)
+	}
+	if properties.CeilingHeight != nil {
+		entry.Ceiling = (entry.Ceiling & 0xE0) | (byte(*properties.CeilingHeight) & 0x1F)
+	}
+	if properties.SlopeHeight != nil {
+		entry.SlopeHeight = byte(*properties.SlopeHeight)
+	}
+
+	level.onTileDataChanged()
 }
