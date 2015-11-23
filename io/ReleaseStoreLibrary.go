@@ -77,8 +77,10 @@ func (library *ReleaseStoreLibrary) createSavingChunkStore(provider chunk.Provid
 		chunkStore.Swap(func(oldStore chunk.Store) chunk.Store {
 			log.Printf("Saving resource <%s>/<%s>\n", path, name)
 			data := library.serializeStore(oldStore)
+			log.Printf("Serialized previous data, closing old reader")
 			closeLastReader()
 
+			log.Printf("Recreating new reader for new data")
 			newProvider, newReader := library.saveAndReload(data, path, name)
 			closeLastReader = func() { newReader.Close() }
 
