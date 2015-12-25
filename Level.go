@@ -127,7 +127,7 @@ func (level *Level) Textures() (result []int) {
 	return
 }
 
-func bytesToIntAray(bs []byte) []int {
+func bytesToIntArray(bs []byte) []int {
 	result := make([]int, len(bs))
 	for index, value := range bs {
 		result[index] = int(value)
@@ -157,9 +157,20 @@ func (level *Level) Objects() []model.LevelObject {
 			entry.BaseProperties.FineY = int(rawEntry.Y & 0xFF)
 			entry.BaseProperties.Z = int(rawEntry.Z)
 
-			entry.Hacking.Unknown0013 = bytesToIntAray(rawEntry.Unknown0013[:])
-			entry.Hacking.Unknown0015 = bytesToIntAray(rawEntry.Unknown0015[:])
-			entry.Hacking.Unknown0017 = bytesToIntAray(rawEntry.Unknown0017[:])
+			entry.Hacking.Unknown0013 = bytesToIntArray(rawEntry.Unknown0013[:])
+			entry.Hacking.Unknown0015 = bytesToIntArray(rawEntry.Unknown0015[:])
+			entry.Hacking.Unknown0017 = bytesToIntArray(rawEntry.Unknown0017[:])
+
+			meta := data.LevelObjectClassMetaEntry(rawEntry.Class)
+			classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + entry.Class))
+			blockData := classStore.BlockData(0)
+			startOffset := meta.EntrySize * int(rawEntry.ClassTableIndex)
+			if (startOffset + meta.EntrySize) > len(blockData) {
+				fmt.Printf("!!!!! class %d meta says %d bytes size, can't reach index %d in blockData %d",
+					int(entry.Class), meta.EntrySize, rawEntry.ClassTableIndex, len(blockData))
+			} else {
+				entry.Hacking.ClassData = bytesToIntArray(blockData[startOffset+data.LevelObjectPrefixSize : startOffset+meta.EntrySize])
+			}
 
 			result = append(result, entry)
 		}
