@@ -12,9 +12,10 @@ type Project struct {
 
 	library io.StoreLibrary
 
-	textures *Textures
-	palettes *Palettes
-	archive  *Archive
+	textures    *Textures
+	palettes    *Palettes
+	gameObjects *GameObjects
+	archive     *Archive
 }
 
 // NewProject creates a new project based on given release container.
@@ -23,6 +24,7 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 	var textures *Textures
 	var palettes *Palettes
 	var archive *Archive
+	var gameObjects *GameObjects
 
 	textures, err = NewTextures(library)
 
@@ -32,16 +34,20 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 	if err == nil {
 		archive, err = NewArchive(library, "archive.dat")
 	}
+	if err == nil {
+		gameObjects, err = NewGameObjects(library)
+	}
 
 	if err == nil {
 		project = &Project{
-			name:     name,
-			source:   source,
-			sink:     sink,
-			library:  library,
-			textures: textures,
-			palettes: palettes,
-			archive:  archive}
+			name:        name,
+			source:      source,
+			sink:        sink,
+			library:     library,
+			textures:    textures,
+			palettes:    palettes,
+			gameObjects: gameObjects,
+			archive:     archive}
 	}
 
 	return
@@ -60,6 +66,11 @@ func (project *Project) Textures() *Textures {
 // Palettes returns the wrapper for palettes.
 func (project *Project) Palettes() *Palettes {
 	return project.palettes
+}
+
+// GameObjects returns the wrapper for the game objects.
+func (project *Project) GameObjects() *GameObjects {
+	return project.gameObjects
 }
 
 // Archive returns the wrapper for the main archive file.

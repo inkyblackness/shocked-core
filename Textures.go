@@ -84,7 +84,7 @@ func (textures *Textures) SetProperties(index int, prop model.TextureProperties)
 }
 
 func (textures *Textures) DecodeString(data []byte) *string {
-	value := textures.cp.Decode(data[0 : len(data)-1])
+	value := textures.cp.Decode(data)
 
 	return &value
 }
@@ -92,5 +92,5 @@ func (textures *Textures) DecodeString(data []byte) *string {
 func (textures *Textures) EncodeString(value *string) []byte {
 	data := textures.cp.Encode(*value)
 
-	return append(data, 0x00)
+	return data
 }
