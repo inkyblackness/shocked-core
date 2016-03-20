@@ -179,6 +179,178 @@ func (level *Level) Objects() []model.LevelObject {
 	return result
 }
 
+func (level *Level) isTileTypeValley(tileType data.TileType) bool {
+	return tileType == data.ValleyNorthEastToSouthWest || tileType == data.ValleyNorthWestToSouthEast ||
+		tileType == data.ValleySouthEastToNorthWest || tileType == data.ValleySouthWestToNorthEast
+}
+
+type Direction int
+
+const (
+	DirNone  = Direction(0)
+	DirNorth = Direction(1)
+	DirEast  = Direction(2)
+	DirSouth = Direction(4)
+	DirWest  = Direction(8)
+)
+
+var solidDirections = map[data.TileType]Direction{
+	data.Solid: DirNorth | DirEast | DirSouth | DirWest,
+	data.Open:  DirNone,
+
+	data.DiagonalOpenSouthEast: DirNorth | DirWest,
+	data.DiagonalOpenSouthWest: DirNorth | DirEast,
+	data.DiagonalOpenNorthWest: DirEast | DirSouth,
+	data.DiagonalOpenNorthEast: DirSouth | DirWest,
+
+	data.SlopeSouthToNorth: DirNone,
+	data.SlopeWestToEast:   DirNone,
+	data.SlopeNorthToSouth: DirNone,
+	data.SlopeEastToWest:   DirNone,
+
+	data.ValleySouthEastToNorthWest: DirNone,
+	data.ValleySouthWestToNorthEast: DirNone,
+	data.ValleyNorthWestToSouthEast: DirNone,
+	data.ValleyNorthEastToSouthWest: DirNone,
+
+	data.RidgeNorthWestToSouthEast: DirNone,
+	data.RidgeNorthEastToSouthWest: DirNone,
+	data.RidgeSouthEastToNorthWest: DirNone,
+	data.RidgeSouthWestToNorthEast: DirNone}
+
+var slopedDirections = map[data.TileType]Direction{
+	data.Solid: DirNone,
+	data.Open:  DirNone,
+
+	data.DiagonalOpenSouthEast: DirNone,
+	data.DiagonalOpenSouthWest: DirNone,
+	data.DiagonalOpenNorthWest: DirNone,
+	data.DiagonalOpenNorthEast: DirNone,
+
+	data.SlopeSouthToNorth: DirNorth | DirEast | DirWest,
+	data.SlopeWestToEast:   DirNorth | DirEast | DirSouth,
+	data.SlopeNorthToSouth: DirEast | DirSouth | DirWest,
+	data.SlopeEastToWest:   DirNorth | DirSouth | DirWest,
+
+	data.ValleySouthEastToNorthWest: DirNorth | DirEast | DirSouth | DirWest,
+	data.ValleySouthWestToNorthEast: DirNorth | DirEast | DirSouth | DirWest,
+	data.ValleyNorthWestToSouthEast: DirNorth | DirEast | DirSouth | DirWest,
+	data.ValleyNorthEastToSouthWest: DirNorth | DirEast | DirSouth | DirWest,
+
+	data.RidgeNorthWestToSouthEast: DirEast | DirSouth,
+	data.RidgeNorthEastToSouthWest: DirSouth | DirWest,
+	data.RidgeSouthEastToNorthWest: DirWest | DirNorth,
+	data.RidgeSouthWestToNorthEast: DirNorth | DirEast}
+
+var invertedSlopes = map[data.TileType]data.TileType{
+	data.Solid: data.Solid,
+	data.Open:  data.Open,
+
+	data.DiagonalOpenSouthEast: data.DiagonalOpenSouthEast,
+	data.DiagonalOpenSouthWest: data.DiagonalOpenSouthWest,
+	data.DiagonalOpenNorthWest: data.DiagonalOpenNorthWest,
+	data.DiagonalOpenNorthEast: data.DiagonalOpenNorthEast,
+
+	data.SlopeSouthToNorth: data.SlopeNorthToSouth,
+	data.SlopeWestToEast:   data.SlopeEastToWest,
+	data.SlopeNorthToSouth: data.SlopeSouthToNorth,
+	data.SlopeEastToWest:   data.SlopeWestToEast,
+
+	data.ValleySouthEastToNorthWest: data.RidgeNorthWestToSouthEast,
+	data.ValleySouthWestToNorthEast: data.RidgeNorthEastToSouthWest,
+	data.ValleyNorthWestToSouthEast: data.RidgeSouthEastToNorthWest,
+	data.ValleyNorthEastToSouthWest: data.RidgeSouthWestToNorthEast,
+
+	data.RidgeNorthWestToSouthEast: data.ValleySouthEastToNorthWest,
+	data.RidgeNorthEastToSouthWest: data.ValleySouthWestToNorthEast,
+	data.RidgeSouthEastToNorthWest: data.ValleyNorthWestToSouthEast,
+	data.RidgeSouthWestToNorthEast: data.ValleyNorthEastToSouthWest}
+
+func (level *Level) calculatedFloorHeight(tile *data.TileMapEntry, dir Direction) (height int) {
+	slopeControl := (tile.Flags >> 10) & 0x3
+
+	if (solidDirections[tile.Type] & dir) == 0 {
+		height = int(tile.Floor & 0x1F)
+	} else {
+		height = 0x20
+	}
+	if (slopeControl != 3) && ((slopedDirections[tile.Type] & dir) != 0) {
+		height += int(tile.SlopeHeight)
+	}
+
+	return
+}
+
+func (level *Level) calculatedCeilingHeight(tile *data.TileMapEntry, dir Direction) (height int) {
+	slopeControl := (tile.Flags >> 10) & 0x3
+
+	if (solidDirections[tile.Type] & dir) == 0 {
+		height = 0x20 - int(tile.Ceiling&0x1F)
+	} else {
+		height = 0x20
+	}
+	if (slopeControl == 1) && ((slopedDirections[tile.Type] & dir) != 0) {
+		height -= int(tile.SlopeHeight)
+	} else if slopeControl == 0 {
+		invertedType := invertedSlopes[tile.Type]
+		if (slopedDirections[invertedType] & dir) != 0 {
+			height -= int(tile.SlopeHeight)
+		}
+	}
+
+	return
+}
+
+func (level *Level) getTileFloorHeight(x, y int, dir Direction) int {
+	height := 0x20
+
+	if (x >= 0) && (x < 64) && (y >= 0) && (y < 64) {
+		entries := level.bufferTileData()
+		entry := entries[y*64+x]
+		height = level.calculatedFloorHeight(&entry, dir)
+	}
+
+	return height
+}
+
+func (level *Level) getTileType(x, y int) data.TileType {
+	tileType := data.Solid
+
+	if (x >= 0) && (x < 64) && (y >= 0) && (y < 64) {
+		entries := level.bufferTileData()
+		entry := entries[y*64+x]
+		tileType = entry.Type
+	}
+
+	return tileType
+}
+
+func (level *Level) calculateWallHeight(thisTile *data.TileMapEntry, thisDir Direction, otherX, otherY int, otherDir Direction) float32 {
+	calculatedHeight := float32(0.0)
+
+	if (solidDirections[thisTile.Type] & thisDir) == 0 {
+		otherType := level.getTileType(otherX, otherY)
+
+		if (solidDirections[otherType] & otherDir) == 0 {
+			thisCeilingHeight := level.calculatedCeilingHeight(thisTile, thisDir)
+			otherFloorHeight := level.getTileFloorHeight(otherX, otherY, otherDir)
+
+			if otherFloorHeight <= thisCeilingHeight {
+				thisFloorHeight := level.calculatedFloorHeight(thisTile, thisDir)
+				if otherFloorHeight > thisFloorHeight && thisFloorHeight < thisCeilingHeight {
+					calculatedHeight = float32(otherFloorHeight-thisFloorHeight) / float32(thisCeilingHeight-thisFloorHeight)
+				}
+			} else {
+				calculatedHeight = 1.0
+			}
+		} else {
+			calculatedHeight = 1.0
+		}
+	}
+
+	return calculatedHeight
+}
+
 func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
@@ -194,6 +366,14 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 	*result.FloorHeight = model.HeightUnit(entry.Floor & 0x1F)
 	result.CeilingHeight = new(model.HeightUnit)
 	*result.CeilingHeight = model.HeightUnit(entry.Ceiling & 0x1F)
+
+	{
+		result.CalculatedWallHeights = new(model.CalculatedWallHeights)
+		result.CalculatedWallHeights.North = level.calculateWallHeight(&entry, DirNorth, x, y+1, DirSouth)
+		result.CalculatedWallHeights.East = level.calculateWallHeight(&entry, DirEast, x+1, y, DirWest)
+		result.CalculatedWallHeights.South = level.calculateWallHeight(&entry, DirSouth, x, y-1, DirNorth)
+		result.CalculatedWallHeights.West = level.calculateWallHeight(&entry, DirWest, x-1, y, DirEast)
+	}
 
 	{
 		var properties model.RealWorldTileProperties
