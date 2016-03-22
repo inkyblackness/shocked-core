@@ -218,7 +218,31 @@ var solidDirections = map[data.TileType]Direction{
 	data.RidgeSouthEastToNorthWest: DirNone,
 	data.RidgeSouthWestToNorthEast: DirNone}
 
-var slopedDirections = map[data.TileType]Direction{
+var slopedCeilingHeightDirections = map[data.TileType]Direction{
+	data.Solid: DirNone,
+	data.Open:  DirNone,
+
+	data.DiagonalOpenSouthEast: DirNone,
+	data.DiagonalOpenSouthWest: DirNone,
+	data.DiagonalOpenNorthWest: DirNone,
+	data.DiagonalOpenNorthEast: DirNone,
+
+	data.SlopeSouthToNorth: DirSouth,
+	data.SlopeWestToEast:   DirWest,
+	data.SlopeNorthToSouth: DirNorth,
+	data.SlopeEastToWest:   DirEast,
+
+	data.ValleySouthEastToNorthWest: DirNone,
+	data.ValleySouthWestToNorthEast: DirNone,
+	data.ValleyNorthWestToSouthEast: DirNone,
+	data.ValleyNorthEastToSouthWest: DirNone,
+
+	data.RidgeNorthWestToSouthEast: DirNorth | DirWest,
+	data.RidgeNorthEastToSouthWest: DirNorth | DirEast,
+	data.RidgeSouthEastToNorthWest: DirEast | DirSouth,
+	data.RidgeSouthWestToNorthEast: DirSouth | DirWest}
+
+var slopedFloorHeightDirections = map[data.TileType]Direction{
 	data.Solid: DirNone,
 	data.Open:  DirNone,
 
@@ -242,7 +266,7 @@ var slopedDirections = map[data.TileType]Direction{
 	data.RidgeSouthEastToNorthWest: DirWest | DirNorth,
 	data.RidgeSouthWestToNorthEast: DirNorth | DirEast}
 
-var invertedSlopes = map[data.TileType]data.TileType{
+var mirroredSlopes = map[data.TileType]data.TileType{
 	data.Solid: data.Solid,
 	data.Open:  data.Open,
 
@@ -267,50 +291,35 @@ var invertedSlopes = map[data.TileType]data.TileType{
 	data.RidgeSouthWestToNorthEast: data.ValleyNorthEastToSouthWest}
 
 func (level *Level) calculatedFloorHeight(tile *data.TileMapEntry, dir Direction) (height int) {
-	slopeControl := (tile.Flags >> 10) & 0x3
-
 	if (solidDirections[tile.Type] & dir) == 0 {
+		slopeControl := (tile.Flags >> 10) & 0x3
+
 		height = int(tile.Floor & 0x1F)
+		if (slopeControl != 3) && ((slopedFloorHeightDirections[tile.Type] & dir) != 0) {
+			height += int(tile.SlopeHeight)
+		}
 	} else {
 		height = 0x20
-	}
-	if (slopeControl != 3) && ((slopedDirections[tile.Type] & dir) != 0) {
-		height += int(tile.SlopeHeight)
 	}
 
 	return
 }
 
 func (level *Level) calculatedCeilingHeight(tile *data.TileMapEntry, dir Direction) (height int) {
-	slopeControl := (tile.Flags >> 10) & 0x3
-
 	if (solidDirections[tile.Type] & dir) == 0 {
+		slopeControl := (tile.Flags >> 10) & 0x3
+
 		height = 0x20 - int(tile.Ceiling&0x1F)
+		if ((slopeControl == 0) || (slopeControl == 3)) && ((slopedCeilingHeightDirections[tile.Type] & dir) != 0) {
+			height -= int(tile.SlopeHeight)
+		} else if (slopeControl == 1) && ((slopedCeilingHeightDirections[mirroredSlopes[tile.Type]] & dir) != 0) {
+			height -= int(tile.SlopeHeight)
+		}
 	} else {
 		height = 0x20
 	}
-	if (slopeControl == 1) && ((slopedDirections[tile.Type] & dir) != 0) {
-		height -= int(tile.SlopeHeight)
-	} else if slopeControl == 0 {
-		invertedType := invertedSlopes[tile.Type]
-		if (slopedDirections[invertedType] & dir) != 0 {
-			height -= int(tile.SlopeHeight)
-		}
-	}
 
 	return
-}
-
-func (level *Level) getTileFloorHeight(x, y int, dir Direction) int {
-	height := 0x20
-
-	if (x >= 0) && (x < 64) && (y >= 0) && (y < 64) {
-		entries := level.bufferTileData()
-		entry := entries[y*64+x]
-		height = level.calculatedFloorHeight(&entry, dir)
-	}
-
-	return height
 }
 
 func (level *Level) getTileType(x, y int) data.TileType {
@@ -332,16 +341,32 @@ func (level *Level) calculateWallHeight(thisTile *data.TileMapEntry, thisDir Dir
 		otherType := level.getTileType(otherX, otherY)
 
 		if (solidDirections[otherType] & otherDir) == 0 {
+			entries := level.bufferTileData()
+			otherTile := entries[otherY*64+otherX]
 			thisCeilingHeight := level.calculatedCeilingHeight(thisTile, thisDir)
-			otherFloorHeight := level.getTileFloorHeight(otherX, otherY, otherDir)
+			otherCeilingHeight := level.calculatedCeilingHeight(&otherTile, otherDir)
+			thisFloorHeight := level.calculatedFloorHeight(thisTile, thisDir)
+			otherFloorHeight := level.calculatedFloorHeight(&otherTile, otherDir)
 
-			if otherFloorHeight <= thisCeilingHeight {
-				thisFloorHeight := level.calculatedFloorHeight(thisTile, thisDir)
-				if otherFloorHeight > thisFloorHeight && thisFloorHeight < thisCeilingHeight {
-					calculatedHeight = float32(otherFloorHeight-thisFloorHeight) / float32(thisCeilingHeight-thisFloorHeight)
+			if (thisCeilingHeight < otherCeilingHeight) ||
+				((thisCeilingHeight == otherCeilingHeight) && thisFloorHeight < otherFloorHeight) {
+
+				if (thisFloorHeight >= otherCeilingHeight) || (otherFloorHeight >= thisCeilingHeight) {
+					calculatedHeight = 1.0
+				} else {
+					minFloorHeight := thisFloorHeight
+					maxFloorHeight := otherFloorHeight
+					minCeilingHeight := thisCeilingHeight
+					if minFloorHeight > otherFloorHeight {
+						minFloorHeight = otherFloorHeight
+						maxFloorHeight = thisFloorHeight
+					}
+					if minCeilingHeight > otherCeilingHeight {
+						minCeilingHeight = otherCeilingHeight
+					}
+					calculatedHeight = (float32(maxFloorHeight) - float32(minFloorHeight)) / (float32(minCeilingHeight) - float32(minFloorHeight))
 				}
-			} else {
-				calculatedHeight = 1.0
+
 			}
 		} else {
 			calculatedHeight = 1.0
