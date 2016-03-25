@@ -127,6 +127,23 @@ func (level *Level) Textures() (result []int) {
 	return
 }
 
+func (level *Level) SetTextures(newIds []int) {
+	blockStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 7))
+	var ids [54]uint16
+	toCopy := len(ids)
+
+	if len(newIds) < toCopy {
+		toCopy = len(newIds)
+	}
+	for index := 0; index < len(ids); index++ {
+		ids[index] = uint16(newIds[index])
+	}
+
+	buffer := bytes.NewBuffer(nil)
+	binary.Write(buffer, binary.LittleEndian, &ids)
+	blockStore.SetBlockData(0, buffer.Bytes())
+}
+
 func bytesToIntArray(bs []byte) []int {
 	result := make([]int, len(bs))
 	for index, value := range bs {
