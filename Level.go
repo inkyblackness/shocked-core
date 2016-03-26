@@ -37,12 +37,30 @@ var tileTypes = map[data.TileType]model.TileType{
 	data.RidgeSouthEastToNorthWest: model.RidgeSouthEastToNorthWest,
 	data.RidgeSouthWestToNorthEast: model.RidgeSouthWestToNorthEast}
 
+var slopeControls = map[data.SlopeControl]model.SlopeControl{
+	data.SlopeCeilingInverted: model.SlopeCeilingInverted,
+	data.SlopeCeilingMirrored: model.SlopeCeilingMirrored,
+	data.SlopeCeilingFlat:     model.SlopeCeilingFlat,
+	data.SlopeFloorFlat:       model.SlopeFloorFlat}
+
 func tileType(modelType model.TileType) (dataType data.TileType) {
 	dataType = data.Solid
 
 	for key, value := range tileTypes {
 		if value == modelType {
 			dataType = key
+		}
+	}
+
+	return
+}
+
+func slopeControl(modelControl model.SlopeControl) (dataControl data.SlopeControl) {
+	dataControl = data.SlopeCeilingInverted
+
+	for key, value := range slopeControls {
+		if value == modelControl {
+			dataControl = key
 		}
 	}
 
@@ -408,6 +426,8 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 	*result.FloorHeight = model.HeightUnit(entry.Floor & 0x1F)
 	result.CeilingHeight = new(model.HeightUnit)
 	*result.CeilingHeight = model.HeightUnit(entry.Ceiling & 0x1F)
+	result.SlopeControl = new(model.SlopeControl)
+	*result.SlopeControl = slopeControls[data.SlopeControl((entry.Flags>>10)&0x3)]
 
 	{
 		result.CalculatedWallHeights = new(model.CalculatedWallHeights)
@@ -431,6 +451,12 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 		*properties.FloorTexture = int((textureIDs >> 11) & 0x1F)
 		properties.FloorTextureRotations = new(int)
 		*properties.FloorTextureRotations = int((entry.Floor >> 5) & 0x03)
+
+		properties.UseAdjacentWallTexture = new(bool)
+		*properties.UseAdjacentWallTexture = (entry.Flags & 0x00000100) != 0
+		properties.WallTextureOffset = new(model.HeightUnit)
+		*properties.WallTextureOffset = model.HeightUnit(entry.Flags & 0x0000001F)
+
 		result.RealWorld = &properties
 	}
 
@@ -444,6 +470,7 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 	entries := level.bufferTileData()
 
 	entry := &entries[y*64+x]
+	flags := uint32(entry.Flags)
 	if properties.Type != nil {
 		entry.Type = tileType(*properties.Type)
 	}
@@ -456,15 +483,34 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 	if properties.SlopeHeight != nil {
 		entry.SlopeHeight = byte(*properties.SlopeHeight)
 	}
+	if properties.SlopeControl != nil {
+		flags = (flags & ^uint32(0x00000C00)) | (uint32(slopeControl(*properties.SlopeControl)) << 10)
+	}
 	if properties.RealWorld != nil {
 		var textureIDs = uint16(entry.Textures)
 
-		if properties.RealWorld.FloorTexture != nil {
-			textureIDs = (textureIDs & 0x01FF) | (uint16(*properties.RealWorld.FloorTexture) << 11)
+		if properties.RealWorld.FloorTexture != nil && (*properties.RealWorld.FloorTexture < 0x20) {
+			textureIDs = (textureIDs & 0x07FF) | (uint16(*properties.RealWorld.FloorTexture) << 11)
+		}
+		if properties.RealWorld.CeilingTexture != nil && (*properties.RealWorld.CeilingTexture < 0x20) {
+			textureIDs = (textureIDs & 0xF83F) | (uint16(*properties.RealWorld.CeilingTexture) << 6)
+		}
+		if properties.RealWorld.WallTexture != nil && (*properties.RealWorld.WallTexture < 0x40) {
+			textureIDs = (textureIDs & 0xFFC0) | uint16(*properties.RealWorld.WallTexture)
+		}
+		if properties.RealWorld.UseAdjacentWallTexture != nil {
+			flags = flags & ^uint32(0x00000100)
+			if *properties.RealWorld.UseAdjacentWallTexture {
+				flags |= 0x00000100
+			}
+		}
+		if properties.RealWorld.WallTextureOffset != nil && *properties.RealWorld.WallTextureOffset < 0x20 {
+			flags = (flags & ^uint32(0x0000001F)) | uint32(*properties.RealWorld.WallTextureOffset)
 		}
 
 		entry.Textures = data.TileTextureInfo(textureIDs)
 	}
+	entry.Flags = data.TileFlag(flags)
 
 	level.onTileDataChanged()
 }
