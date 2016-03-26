@@ -492,8 +492,14 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 		if properties.RealWorld.FloorTexture != nil && (*properties.RealWorld.FloorTexture < 0x20) {
 			textureIDs = (textureIDs & 0x07FF) | (uint16(*properties.RealWorld.FloorTexture) << 11)
 		}
+		if properties.RealWorld.FloorTextureRotations != nil {
+			entry.Floor = (entry.Floor & 0x9F) | ((byte(*properties.RealWorld.FloorTextureRotations) & 0x3) << 5)
+		}
 		if properties.RealWorld.CeilingTexture != nil && (*properties.RealWorld.CeilingTexture < 0x20) {
 			textureIDs = (textureIDs & 0xF83F) | (uint16(*properties.RealWorld.CeilingTexture) << 6)
+		}
+		if properties.RealWorld.CeilingTextureRotations != nil {
+			entry.Ceiling = (entry.Ceiling & 0x9F) | ((byte(*properties.RealWorld.CeilingTextureRotations) & 0x3) << 5)
 		}
 		if properties.RealWorld.WallTexture != nil && (*properties.RealWorld.WallTexture < 0x40) {
 			textureIDs = (textureIDs & 0xFFC0) | uint16(*properties.RealWorld.WallTexture)
