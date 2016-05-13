@@ -39,14 +39,21 @@ func (store *DynamicChunkStore) IDs() []res.ResourceID {
 }
 
 // Get returns a chunk for the given identifier.
-func (store *DynamicChunkStore) Get(id res.ResourceID) chunk.BlockStore {
+func (store *DynamicChunkStore) Get(id res.ResourceID) (blockStore chunk.BlockStore) {
 	retriever := func(handler func(chunk.BlockStore)) {
 		store.mutex.Lock()
 		defer store.mutex.Unlock()
 
 		handler(store.wrapped.Get(id))
 	}
-	blockStore := newDynamicBlockStore(retriever)
+	exists := false
+
+	retriever(func(existing chunk.BlockStore) {
+		exists = existing != nil
+	})
+	if exists {
+		blockStore = newDynamicBlockStore(retriever)
+	}
 
 	return blockStore
 }

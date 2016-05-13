@@ -83,6 +83,17 @@ func (suite *DynamicChunkStoreSuite) TestGetReturnsBlockFromWrapped(c *check.C) 
 	c.Check(holder, check.NotNil)
 }
 
+func (suite *DynamicChunkStoreSuite) TestGetReturnsNilIfWrappedDoesntHaveIt(c *check.C) {
+	provider := suite.createChunkProvider(func(consumer chunk.Consumer) {})
+
+	wrappedStore := store.NewProviderBacked(provider, func() {})
+	store := NewDynamicChunkStore(wrappedStore)
+
+	holder := store.Get(res.ResourceID(2))
+
+	c.Check(holder, check.IsNil)
+}
+
 func (suite *DynamicChunkStoreSuite) TestBlockHolderModifiesWrapped(c *check.C) {
 	provider := suite.createChunkProvider(func(consumer chunk.Consumer) {
 		consumer.Consume(res.ResourceID(1), chunk.NewBlockHolder(chunk.BasicChunkType, res.Palette, [][]byte{[]byte{}}))
