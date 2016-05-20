@@ -67,6 +67,7 @@ func slopeControl(modelControl model.SlopeControl) (dataControl data.SlopeContro
 	return
 }
 
+// Level is a structure holding level specific information.
 type Level struct {
 	id    int
 	store chunk.Store
@@ -80,6 +81,7 @@ type Level struct {
 	objectList      []data.LevelObjectEntry
 }
 
+// NewLevel returns a new instance of a Level structure.
 func NewLevel(store chunk.Store, id int) *Level {
 	return &Level{id: id, store: store}
 }
@@ -116,10 +118,12 @@ func (level *Level) bufferObjectList() []data.LevelObjectEntry {
 	return level.objectList
 }
 
+// ID returns the identifier of the level.
 func (level *Level) ID() int {
 	return level.id
 }
 
+// Properties returns the properties of the level.
 func (level *Level) Properties() (result model.LevelProperties) {
 	blockData := level.store.Get(res.ResourceID(4000 + level.id*100 + 4)).BlockData(0)
 	reader := bytes.NewReader(blockData)
@@ -132,6 +136,7 @@ func (level *Level) Properties() (result model.LevelProperties) {
 	return
 }
 
+// Textures returns the texture identifier used in this level.
 func (level *Level) Textures() (result []int) {
 	blockData := level.store.Get(res.ResourceID(4000 + level.id*100 + 7)).BlockData(0)
 	reader := bytes.NewReader(blockData)
@@ -145,6 +150,7 @@ func (level *Level) Textures() (result []int) {
 	return
 }
 
+// SetTextures sets the texture identifier for this level.
 func (level *Level) SetTextures(newIds []int) {
 	blockStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 7))
 	var ids [54]uint16
@@ -171,6 +177,7 @@ func bytesToIntArray(bs []byte) []int {
 	return result
 }
 
+// Objects returns an array of all used objects.
 func (level *Level) Objects() []model.LevelObject {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
@@ -193,7 +200,6 @@ func (level *Level) Objects() []model.LevelObject {
 			entry.BaseProperties.Z = int(rawEntry.Z)
 
 			entry.Hacking.Unknown0013 = bytesToIntArray(rawEntry.Unknown0013[:])
-			entry.Hacking.Unknown0015 = bytesToIntArray(rawEntry.Unknown0015[:])
 			entry.Hacking.Unknown0017 = bytesToIntArray(rawEntry.Unknown0017[:])
 
 			meta := data.LevelObjectClassMetaEntry(rawEntry.Class)
@@ -214,13 +220,159 @@ func (level *Level) Objects() []model.LevelObject {
 	return result
 }
 
+// AddObject adds a new object at given tile.
+func (level *Level) AddObject(template *model.LevelObjectTemplate) (objectIndex int, err error) {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
+	objID := res.MakeObjectID(res.ObjectClass(template.Class),
+		res.ObjectSubclass(template.Subclass), res.ObjectType(template.Type))
+
+	classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + int(objID.Class)))
+	classData := classStore.BlockData(0)
+	classMeta := data.LevelObjectClassMetaEntry(objID.Class)
+	classDataReader := bytes.NewReader(classData)
+
+	readClassEntry := func(index uint16) (entry data.LevelObjectPrefix) {
+		classDataReader.Seek(int64(index)*int64(classMeta.EntrySize), 0)
+		binary.Read(classDataReader, binary.LittleEndian, &entry)
+		return
+	}
+	writeClassEntry := func(index uint16, entry *data.LevelObjectPrefix, zeroDetails bool) {
+		buf := bytes.NewBuffer(nil)
+		binary.Write(buf, binary.LittleEndian, entry)
+		newData := buf.Bytes()
+		start := int(index) * classMeta.EntrySize
+		for offset, value := range newData {
+			classData[start+offset] = value
+		}
+		if zeroDetails {
+			for offset := data.LevelObjectPrefixSize; offset < classMeta.EntrySize; offset++ {
+				classData[start+offset] = 0x00
+			}
+		}
+	}
+
+	classStart := readClassEntry(0)
+	classIndex := classStart.Previous
+	classPreviousIndex := classStart.LevelObjectTableIndex
+	if classIndex == 0 {
+		err = fmt.Errorf("Class table full")
+		return
+	}
+	classEntry := readClassEntry(classIndex)
+	var classPrevious *data.LevelObjectPrefix
+	if classPreviousIndex != 0 {
+		temp := readClassEntry(classPreviousIndex)
+		classPrevious = &temp
+	} else {
+		classPrevious = &classStart
+	}
+
+	var crossrefList [1600]data.LevelObjectCrossReference
+	crossrefStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 9))
+	crossrefData := crossrefStore.BlockData(0)
+	crossrefReader := bytes.NewReader(crossrefData)
+
+	binary.Read(crossrefReader, binary.LittleEndian, &crossrefList)
+
+	crossrefStart := &crossrefList[0]
+	crossrefIndex := crossrefStart.NextObjectIndex
+	if crossrefIndex == 0 {
+		err = fmt.Errorf("Crossref table full")
+		return
+	}
+	crossrefEntry := &crossrefList[crossrefStart.NextObjectIndex]
+
+	objectList := level.bufferObjectList()
+	objectStart := &objectList[0]
+	objectIndex = int(objectStart.Previous)
+	if objectIndex == 0 {
+		err = fmt.Errorf("Object table full")
+	}
+
+	objectPrevious := &objectList[objectStart.CrossReferenceTableIndex]
+	objectEntry := &objectList[objectStart.Previous]
+	objectEntry.InUse = 1
+	objectEntry.Class = objID.Class
+	objectEntry.Subclass = objID.Subclass
+	objectEntry.Type = objID.Type
+	objectEntry.X = data.TileCoordinate(template.TileX<<8 + template.FineX)
+	objectEntry.Y = data.TileCoordinate(template.TileY<<8 + template.FineY)
+	objectEntry.Z = byte(template.Z)
+	objectEntry.Rot1 = 0
+	objectEntry.Rot2 = 0
+	objectEntry.Rot3 = 0
+	objectEntry.Hitpoints = 1
+
+	tileMap := level.bufferTileData()
+	tile := &tileMap[template.TileY*64+template.TileX]
+
+	crossrefEntry.TileX = uint16(template.TileX)
+	crossrefEntry.TileY = uint16(template.TileY)
+
+	// wire crossref with tile
+	crossrefStart.NextObjectIndex = crossrefEntry.NextObjectIndex
+	crossrefEntry.NextObjectIndex = tile.FirstObjectIndex
+	tile.FirstObjectIndex = crossrefIndex
+	crossrefEntry.NextTileIndex = crossrefIndex
+
+	// wire crossref with object entry
+	crossrefEntry.LevelObjectTableIndex = uint16(objectIndex)
+	objectEntry.CrossReferenceTableIndex = crossrefIndex
+
+	// wire object between start and old tail
+	objectStart.Previous = objectEntry.Previous
+	objectEntry.Previous = objectStart.CrossReferenceTableIndex
+	objectStart.CrossReferenceTableIndex = uint16(objectIndex)
+	objectEntry.Next = 0
+	objectPrevious.Next = uint16(objectIndex)
+
+	// wire object with class entry
+	classEntry.LevelObjectTableIndex = uint16(objectIndex)
+	objectEntry.ClassTableIndex = classIndex
+
+	// wire class entry between start and old tail
+	classStart.Previous = classEntry.Previous
+	classEntry.Previous = classStart.LevelObjectTableIndex
+	classStart.LevelObjectTableIndex = classIndex
+	classEntry.Next = 0
+	classPrevious.Next = classIndex
+
+	writeClassEntry(0, &classStart, false)
+	writeClassEntry(classIndex, &classEntry, true)
+	if classPreviousIndex != 0 {
+		writeClassEntry(classPreviousIndex, classPrevious, false)
+	}
+
+	classStore.SetBlockData(0, classData)
+	objWriter := bytes.NewBuffer(nil)
+	binary.Write(objWriter, binary.LittleEndian, objectList)
+	level.objectListStore.SetBlockData(0, objWriter.Bytes())
+	crossrefWriter := bytes.NewBuffer(nil)
+	binary.Write(crossrefWriter, binary.LittleEndian, &crossrefList)
+	crossrefStore.SetBlockData(0, crossrefWriter.Bytes())
+	level.onTileDataChanged()
+
+	return
+}
+
+func (level *Level) readTable(levelBlockID int, value interface{}) {
+	blockData := level.store.Get(res.ResourceID(4000 + level.id*100 + levelBlockID)).BlockData(0)
+	reader := bytes.NewReader(blockData)
+
+	binary.Read(reader, binary.LittleEndian, value)
+}
+
 func (level *Level) isTileTypeValley(tileType data.TileType) bool {
 	return tileType == data.ValleyNorthEastToSouthWest || tileType == data.ValleyNorthWestToSouthEast ||
 		tileType == data.ValleySouthEastToNorthWest || tileType == data.ValleySouthWestToNorthEast
 }
 
+// Direction describes a flag field.
 type Direction int
 
+//
 const (
 	DirNone  = Direction(0)
 	DirNorth = Direction(1)
@@ -411,6 +563,7 @@ func (level *Level) calculateWallHeight(thisTile *data.TileMapEntry, thisDir Dir
 	return calculatedHeight
 }
 
+// TileProperties returns the properties of a specific tile.
 func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
@@ -463,6 +616,7 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 	return
 }
 
+// SetTileProperties sets the properties of a specific tile.
 func (level *Level) SetTileProperties(x, y int, properties model.TileProperties) {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
