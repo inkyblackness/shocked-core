@@ -297,8 +297,8 @@ func (level *Level) AddObject(template *model.LevelObjectTemplate) (objectIndex 
 	objectEntry.Class = objID.Class
 	objectEntry.Subclass = objID.Subclass
 	objectEntry.Type = objID.Type
-	objectEntry.X = data.TileCoordinate(template.TileX<<8 + template.FineX)
-	objectEntry.Y = data.TileCoordinate(template.TileY<<8 + template.FineY)
+	objectEntry.X = data.MapCoordinateOf(byte(template.TileX), byte(template.FineX))
+	objectEntry.Y = data.MapCoordinateOf(byte(template.TileY), byte(template.FineY))
 	objectEntry.Z = byte(template.Z)
 	objectEntry.Rot1 = 0
 	objectEntry.Rot2 = 0
