@@ -9,6 +9,7 @@ import (
 	"github.com/inkyblackness/res"
 	"github.com/inkyblackness/res/chunk"
 	"github.com/inkyblackness/res/data"
+	"github.com/inkyblackness/res/logic"
 
 	model "github.com/inkyblackness/shocked-model"
 )
@@ -75,47 +76,50 @@ type Level struct {
 	mutex sync.Mutex
 
 	tileMapStore chunk.BlockStore
-	tileMap      []data.TileMapEntry
+	tileMap      *logic.TileMap
 
 	objectListStore chunk.BlockStore
 	objectList      []data.LevelObjectEntry
+	objectChain     *logic.LevelObjectChain
+
+	crossrefListStore chunk.BlockStore
+	crossrefList      *logic.CrossReferenceList
 }
 
 // NewLevel returns a new instance of a Level structure.
 func NewLevel(store chunk.Store, id int) *Level {
-	return &Level{id: id, store: store}
-}
+	baseStoreID := 4000 + id*100
+	level := &Level{
+		id:    id,
+		store: store,
 
-func (level *Level) bufferTileData() []data.TileMapEntry {
-	if level.tileMap == nil {
-		level.tileMap = make([]data.TileMapEntry, 64*64)
+		tileMapStore: store.Get(res.ResourceID(baseStoreID + 5)),
+		tileMap:      nil,
 
-		level.tileMapStore = level.store.Get(res.ResourceID(4000 + level.id*100 + 5))
-		blockData := level.tileMapStore.BlockData(0)
-		reader := bytes.NewReader(blockData)
-		binary.Read(reader, binary.LittleEndian, &level.tileMap)
-	}
+		objectListStore: store.Get(res.ResourceID(baseStoreID + 8)),
 
-	return level.tileMap
-}
+		crossrefListStore: store.Get(res.ResourceID(baseStoreID + 9))}
 
-func (level *Level) onTileDataChanged() {
-	buf := bytes.NewBuffer(nil)
+	level.tileMap = logic.DecodeTileMap(level.tileMapStore.BlockData(0), 64, 64)
+	level.crossrefList = logic.DecodeCrossReferenceList(level.crossrefListStore.BlockData(0))
 
-	binary.Write(buf, binary.LittleEndian, &level.tileMap)
-	level.tileMapStore.SetBlockData(0, buf.Bytes())
-}
-
-func (level *Level) bufferObjectList() []data.LevelObjectEntry {
-	if level.objectList == nil {
-		level.objectListStore = level.store.Get(res.ResourceID(4000 + level.id*100 + 8))
+	{
 		blockData := level.objectListStore.BlockData(0)
 		level.objectList = make([]data.LevelObjectEntry, len(blockData)/data.LevelObjectEntrySize)
 		reader := bytes.NewReader(blockData)
 		binary.Read(reader, binary.LittleEndian, &level.objectList)
+
+		level.objectChain = logic.NewLevelObjectChain(&level.objectList[0],
+			func(index data.LevelObjectChainIndex) logic.LevelObjectChainLink {
+				return &level.objectList[index]
+			})
 	}
 
-	return level.objectList
+	return level
+}
+
+func (level *Level) onTileDataChanged() {
+	level.tileMapStore.SetBlockData(0, level.tileMap.Encode())
 }
 
 // ID returns the identifier of the level.
@@ -183,9 +187,8 @@ func (level *Level) Objects() []model.LevelObject {
 	defer level.mutex.Unlock()
 
 	var result []model.LevelObject
-	entries := level.bufferObjectList()
 
-	for index, rawEntry := range entries {
+	for index, rawEntry := range level.objectList {
 		if rawEntry.IsInUse() {
 			entry := model.LevelObject{
 				Identifiable: model.Identifiable{ID: fmt.Sprintf("%d", index)},
@@ -221,78 +224,49 @@ func (level *Level) Objects() []model.LevelObject {
 }
 
 // AddObject adds a new object at given tile.
-func (level *Level) AddObject(template *model.LevelObjectTemplate) (objectIndex int, err error) {
+func (level *Level) AddObject(template *model.LevelObjectTemplate) (createdIndex int, err error) {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
 
 	objID := res.MakeObjectID(res.ObjectClass(template.Class),
 		res.ObjectSubclass(template.Subclass), res.ObjectType(template.Type))
 
-	classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + int(objID.Class)))
-	classData := classStore.BlockData(0)
 	classMeta := data.LevelObjectClassMetaEntry(objID.Class)
-	classDataReader := bytes.NewReader(classData)
+	classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + int(objID.Class)))
+	classTable := logic.DecodeLevelObjectClassTable(classStore.BlockData(0), classMeta.EntrySize)
+	classChain := classTable.AsChain()
+	classIndex, classErr := classChain.AcquireLink()
 
-	readClassEntry := func(index uint16) (entry data.LevelObjectPrefix) {
-		classDataReader.Seek(int64(index)*int64(classMeta.EntrySize), 0)
-		binary.Read(classDataReader, binary.LittleEndian, &entry)
+	if classErr != nil {
+		err = classErr
 		return
 	}
-	writeClassEntry := func(index uint16, entry *data.LevelObjectPrefix, zeroDetails bool) {
-		buf := bytes.NewBuffer(nil)
-		binary.Write(buf, binary.LittleEndian, entry)
-		newData := buf.Bytes()
-		start := int(index) * classMeta.EntrySize
-		for offset, value := range newData {
-			classData[start+offset] = value
-		}
-		if zeroDetails {
-			for offset := data.LevelObjectPrefixSize; offset < classMeta.EntrySize; offset++ {
-				classData[start+offset] = 0x00
-			}
-		}
+	classEntry := classTable.Entry(classIndex)
+	classEntryData := classEntry.Data()
+	for index := 0; index < len(classEntryData); index++ {
+		classEntryData[index] = 0x00
 	}
 
-	classStart := readClassEntry(0)
-	classIndex := classStart.Previous
-	classPreviousIndex := classStart.LevelObjectTableIndex
-	if classIndex == 0 {
-		err = fmt.Errorf("Class table full")
+	objectIndex, objectErr := level.objectChain.AcquireLink()
+	if objectErr != nil {
+		classChain.ReleaseLink(classIndex)
+		err = objectErr
 		return
 	}
-	classEntry := readClassEntry(classIndex)
-	var classPrevious *data.LevelObjectPrefix
-	if classPreviousIndex != 0 {
-		temp := readClassEntry(classPreviousIndex)
-		classPrevious = &temp
-	} else {
-		classPrevious = &classStart
-	}
+	createdIndex = int(objectIndex)
 
-	var crossrefList [1600]data.LevelObjectCrossReference
-	crossrefStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 9))
-	crossrefData := crossrefStore.BlockData(0)
-	crossrefReader := bytes.NewReader(crossrefData)
+	locations := []logic.TileLocation{logic.AtTile(uint16(template.TileX), uint16(template.TileY))}
 
-	binary.Read(crossrefReader, binary.LittleEndian, &crossrefList)
-
-	crossrefStart := &crossrefList[0]
-	crossrefIndex := crossrefStart.NextObjectIndex
-	if crossrefIndex == 0 {
-		err = fmt.Errorf("Crossref table full")
+	crossrefIndex, crossrefErr := level.crossrefList.AddObjectToMap(uint16(objectIndex), level.tileMap, locations)
+	if crossrefErr != nil {
+		classChain.ReleaseLink(classIndex)
+		level.objectChain.ReleaseLink(objectIndex)
+		err = crossrefErr
 		return
 	}
-	crossrefEntry := &crossrefList[crossrefStart.NextObjectIndex]
+	crossrefEntry := level.crossrefList.Entry(crossrefIndex)
 
-	objectList := level.bufferObjectList()
-	objectStart := &objectList[0]
-	objectIndex = int(objectStart.Previous)
-	if objectIndex == 0 {
-		err = fmt.Errorf("Object table full")
-	}
-
-	objectPrevious := &objectList[objectStart.CrossReferenceTableIndex]
-	objectEntry := &objectList[objectStart.Previous]
+	objectEntry := &level.objectList[objectIndex]
 	objectEntry.InUse = 1
 	objectEntry.Class = objID.Class
 	objectEntry.Subclass = objID.Subclass
@@ -305,53 +279,19 @@ func (level *Level) AddObject(template *model.LevelObjectTemplate) (objectIndex 
 	objectEntry.Rot3 = 0
 	objectEntry.Hitpoints = 1
 
-	tileMap := level.bufferTileData()
-	tile := &tileMap[template.TileY*64+template.TileX]
-
-	crossrefEntry.TileX = uint16(template.TileX)
-	crossrefEntry.TileY = uint16(template.TileY)
-
-	// wire crossref with tile
-	crossrefStart.NextObjectIndex = crossrefEntry.NextObjectIndex
-	crossrefEntry.NextObjectIndex = tile.FirstObjectIndex
-	tile.FirstObjectIndex = crossrefIndex
-	crossrefEntry.NextTileIndex = crossrefIndex
-
-	// wire crossref with object entry
+	objectEntry.CrossReferenceTableIndex = uint16(crossrefIndex)
 	crossrefEntry.LevelObjectTableIndex = uint16(objectIndex)
-	objectEntry.CrossReferenceTableIndex = crossrefIndex
 
-	// wire object between start and old tail
-	objectStart.Previous = objectEntry.Previous
-	objectEntry.Previous = objectStart.CrossReferenceTableIndex
-	objectStart.CrossReferenceTableIndex = uint16(objectIndex)
-	objectEntry.Next = 0
-	objectPrevious.Next = uint16(objectIndex)
-
-	// wire object with class entry
+	objectEntry.ClassTableIndex = uint16(classIndex)
 	classEntry.LevelObjectTableIndex = uint16(objectIndex)
-	objectEntry.ClassTableIndex = classIndex
 
-	// wire class entry between start and old tail
-	classStart.Previous = classEntry.Previous
-	classEntry.Previous = classStart.LevelObjectTableIndex
-	classStart.LevelObjectTableIndex = classIndex
-	classEntry.Next = 0
-	classPrevious.Next = classIndex
+	classStore.SetBlockData(0, classTable.Encode())
 
-	writeClassEntry(0, &classStart, false)
-	writeClassEntry(classIndex, &classEntry, true)
-	if classPreviousIndex != 0 {
-		writeClassEntry(classPreviousIndex, classPrevious, false)
-	}
-
-	classStore.SetBlockData(0, classData)
 	objWriter := bytes.NewBuffer(nil)
-	binary.Write(objWriter, binary.LittleEndian, objectList)
+	binary.Write(objWriter, binary.LittleEndian, level.objectList)
 	level.objectListStore.SetBlockData(0, objWriter.Bytes())
-	crossrefWriter := bytes.NewBuffer(nil)
-	binary.Write(crossrefWriter, binary.LittleEndian, &crossrefList)
-	crossrefStore.SetBlockData(0, crossrefWriter.Bytes())
+
+	level.crossrefListStore.SetBlockData(0, level.crossrefList.Encode())
 	level.onTileDataChanged()
 
 	return
@@ -513,8 +453,7 @@ func (level *Level) getTileType(x, y int) data.TileType {
 	tileType := data.Solid
 
 	if (x >= 0) && (x < 64) && (y >= 0) && (y < 64) {
-		entries := level.bufferTileData()
-		entry := entries[y*64+x]
+		entry := level.tileMap.Entry(logic.AtTile(uint16(x), uint16(y)))
 		tileType = entry.Type
 	}
 
@@ -528,12 +467,11 @@ func (level *Level) calculateWallHeight(thisTile *data.TileMapEntry, thisDir Dir
 		otherType := level.getTileType(otherX, otherY)
 
 		if (solidDirections[otherType] & otherDir) == 0 {
-			entries := level.bufferTileData()
-			otherTile := entries[otherY*64+otherX]
+			otherTile := level.tileMap.Entry(logic.AtTile(uint16(otherX), uint16(otherY)))
 			thisCeilingHeight := level.calculatedCeilingHeight(thisTile, thisDir)
-			otherCeilingHeight := level.calculatedCeilingHeight(&otherTile, otherDir)
+			otherCeilingHeight := level.calculatedCeilingHeight(otherTile, otherDir)
 			thisFloorHeight := level.calculatedFloorHeight(thisTile, thisDir)
-			otherFloorHeight := level.calculatedFloorHeight(&otherTile, otherDir)
+			otherFloorHeight := level.calculatedFloorHeight(otherTile, otherDir)
 
 			if (thisCeilingHeight < otherCeilingHeight) ||
 				((thisCeilingHeight == otherCeilingHeight) && thisFloorHeight < otherFloorHeight) {
@@ -568,9 +506,7 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
 
-	entries := level.bufferTileData()
-
-	entry := entries[y*64+x]
+	entry := level.tileMap.Entry(logic.AtTile(uint16(x), uint16(y)))
 	result.Type = new(model.TileType)
 	*result.Type = tileTypes[entry.Type]
 	result.SlopeHeight = new(model.HeightUnit)
@@ -584,10 +520,10 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 
 	{
 		result.CalculatedWallHeights = new(model.CalculatedWallHeights)
-		result.CalculatedWallHeights.North = level.calculateWallHeight(&entry, DirNorth, x, y+1, DirSouth)
-		result.CalculatedWallHeights.East = level.calculateWallHeight(&entry, DirEast, x+1, y, DirWest)
-		result.CalculatedWallHeights.South = level.calculateWallHeight(&entry, DirSouth, x, y-1, DirNorth)
-		result.CalculatedWallHeights.West = level.calculateWallHeight(&entry, DirWest, x-1, y, DirEast)
+		result.CalculatedWallHeights.North = level.calculateWallHeight(entry, DirNorth, x, y+1, DirSouth)
+		result.CalculatedWallHeights.East = level.calculateWallHeight(entry, DirEast, x+1, y, DirWest)
+		result.CalculatedWallHeights.South = level.calculateWallHeight(entry, DirSouth, x, y-1, DirNorth)
+		result.CalculatedWallHeights.West = level.calculateWallHeight(entry, DirWest, x-1, y, DirEast)
 	}
 
 	{
@@ -621,9 +557,7 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
 
-	entries := level.bufferTileData()
-
-	entry := &entries[y*64+x]
+	entry := level.tileMap.Entry(logic.AtTile(uint16(x), uint16(y)))
 	flags := uint32(entry.Flags)
 	if properties.Type != nil {
 		entry.Type = tileType(*properties.Type)
