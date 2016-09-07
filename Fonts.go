@@ -37,24 +37,21 @@ func (fonts *Fonts) Font(id res.ResourceID) (font *model.Font, err error) {
 		fontBlockData := fontChunk.BlockData(0)
 		var fontData resFont.Font
 		fontData, err = resFont.Load(bytes.NewReader(fontBlockData))
-		var pixelData []byte
 
 		if err == nil {
+			isMonochrome := fontData.IsMonochrome()
+			if isMonochrome {
+				fontData = resFont.EnsureColor(fontData, 1)
+			}
+
 			font = &model.Font{
-				Monochrome: fontData.IsMonochrome(),
+				Monochrome: isMonochrome,
 				Bitmap: model.RawBitmap{
 					Width:  fontData.BitmapWidth(),
-					Height: fontData.BitmapHeight()},
+					Height: fontData.BitmapHeight(),
+					Pixels: base64.StdEncoding.EncodeToString(fontData.Bitmap())},
 				FirstCharacter: fontData.FirstCharacter(),
 				GlyphXOffsets:  make([]int, fontData.LastCharacter()-fontData.FirstCharacter())}
-
-			if fontData.IsMonochrome() {
-				colorFont := resFont.EnsureColor(fontData, 1)
-				pixelData = colorFont.Bitmap()
-			} else {
-				pixelData = fontData.Bitmap()
-			}
-			font.Bitmap.Pixels = base64.StdEncoding.EncodeToString(pixelData)
 
 			for charIndex := 0; charIndex < len(font.GlyphXOffsets); charIndex++ {
 				font.GlyphXOffsets[charIndex] = fontData.GlyphXOffset(charIndex)
