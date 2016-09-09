@@ -23,7 +23,8 @@ type GameObjects struct {
 	objProperties objprop.Store
 	objart        chunk.Store
 
-	iconOffsets map[res.ObjectID]int
+	objIconOffsets map[res.ObjectID]int
+	mapIconOffsets map[res.ObjectID]int
 }
 
 // NewGameObjects returns a new instance of GameObjects.
@@ -43,12 +44,13 @@ func NewGameObjects(library io.StoreLibrary) (gameObjects *GameObjects, err erro
 	}
 	if err == nil {
 		gameObjects = &GameObjects{
-			cybstrng:      cybstrng,
-			cp:            text.DefaultCodepage(),
-			desc:          objprop.StandardProperties(),
-			objProperties: objProperties,
-			objart:        objart,
-			iconOffsets:   make(map[res.ObjectID]int)}
+			cybstrng:       cybstrng,
+			cp:             text.DefaultCodepage(),
+			desc:           objprop.StandardProperties(),
+			objProperties:  objProperties,
+			objart:         objart,
+			objIconOffsets: make(map[res.ObjectID]int),
+			mapIconOffsets: make(map[res.ObjectID]int)}
 
 		offset := 1
 		for classIndex, classDesc := range gameObjects.desc {
@@ -58,8 +60,9 @@ func NewGameObjects(library io.StoreLibrary) (gameObjects *GameObjects, err erro
 					commonProperties := gameObjects.commonProperties(objID)
 					extraImages := int(commonProperties.Extra >> 4)
 
+					gameObjects.objIconOffsets[objID] = offset
 					offset = offset + 3 + extraImages
-					gameObjects.iconOffsets[objID] = offset - 1
+					gameObjects.mapIconOffsets[objID] = offset - 1
 				}
 			}
 		}
@@ -78,10 +81,25 @@ func (gameObjects *GameObjects) commonProperties(id res.ObjectID) data.CommonObj
 }
 
 // Icon returns the icon image of the specified game object.
+// It first tries to return the bitmap for the map icon. If that is all transparent,
+// the function reverts to the object icon.
 func (gameObjects *GameObjects) Icon(id res.ObjectID) (bmp image.Bitmap) {
-	blockData := gameObjects.objart.Get(res.ResourceID(0x0546)).BlockData(uint16(gameObjects.iconOffsets[id]))
+	mapIconBlockData := gameObjects.objart.Get(res.ResourceID(0x0546)).BlockData(uint16(gameObjects.mapIconOffsets[id]))
 
-	bmp, _ = image.Read(bytes.NewReader(blockData))
+	bmp, _ = image.Read(bytes.NewReader(mapIconBlockData))
+
+	allZero := true
+	for row := 0; row < int(bmp.ImageHeight()); row++ {
+		for _, b := range bmp.Row(row) {
+			if b != 0x00 {
+				allZero = false
+			}
+		}
+	}
+	if allZero {
+		objIconBlockData := gameObjects.objart.Get(res.ResourceID(0x0546)).BlockData(uint16(gameObjects.objIconOffsets[id]))
+		bmp, _ = image.Read(bytes.NewReader(objIconBlockData))
+	}
 
 	return
 }
