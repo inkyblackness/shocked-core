@@ -190,38 +190,67 @@ func (level *Level) Objects() []model.LevelObject {
 
 	for index, rawEntry := range level.objectList {
 		if rawEntry.IsInUse() {
-			entry := model.LevelObject{
-				Identifiable: model.Identifiable{ID: fmt.Sprintf("%d", index)},
-				Class:        int(rawEntry.Class),
-				Subclass:     int(rawEntry.Subclass),
-				Type:         int(rawEntry.Type)}
-
-			entry.BaseProperties.TileX = int(rawEntry.X >> 8)
-			entry.BaseProperties.FineX = int(rawEntry.X & 0xFF)
-			entry.BaseProperties.TileY = int(rawEntry.Y >> 8)
-			entry.BaseProperties.FineY = int(rawEntry.Y & 0xFF)
-			entry.BaseProperties.Z = int(rawEntry.Z)
-
-			meta := data.LevelObjectClassMetaEntry(rawEntry.Class)
-			classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + entry.Class))
-			blockData := classStore.BlockData(0)
-			startOffset := meta.EntrySize * int(rawEntry.ClassTableIndex)
-			if (startOffset + meta.EntrySize) > len(blockData) {
-				fmt.Printf("!!!!! class %d meta says %d bytes size, can't reach index %d in blockData %d",
-					int(entry.Class), meta.EntrySize, rawEntry.ClassTableIndex, len(blockData))
-			} else {
-				entry.ClassData = bytesToIntArray(blockData[startOffset+data.LevelObjectPrefixSize : startOffset+meta.EntrySize])
-			}
-
-			result = append(result, entry)
+			result = append(result, level.objectFromRawEntry(index, &rawEntry))
 		}
 	}
 
 	return result
 }
 
+func (level *Level) objectFromRawEntry(index int, rawEntry *data.LevelObjectEntry) (entry model.LevelObject) {
+	entry.Identifiable = model.Identifiable{ID: fmt.Sprintf("%d", index)}
+	entry.Class = int(rawEntry.Class)
+	entry.Subclass = int(rawEntry.Subclass)
+	entry.Type = int(rawEntry.Type)
+
+	entry.BaseProperties.TileX = int(rawEntry.X >> 8)
+	entry.BaseProperties.FineX = int(rawEntry.X & 0xFF)
+	entry.BaseProperties.TileY = int(rawEntry.Y >> 8)
+	entry.BaseProperties.FineY = int(rawEntry.Y & 0xFF)
+	entry.BaseProperties.Z = int(rawEntry.Z)
+
+	meta := data.LevelObjectClassMetaEntry(rawEntry.Class)
+	classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + entry.Class))
+	blockData := classStore.BlockData(0)
+	startOffset := meta.EntrySize * int(rawEntry.ClassTableIndex)
+	if (startOffset + meta.EntrySize) > len(blockData) {
+		fmt.Printf("!!!!! class %d meta says %d bytes size, can't reach index %d in blockData %d",
+			int(entry.Class), meta.EntrySize, rawEntry.ClassTableIndex, len(blockData))
+	} else {
+		entry.ClassData = bytesToIntArray(blockData[startOffset+data.LevelObjectPrefixSize : startOffset+meta.EntrySize])
+	}
+
+	return
+}
+
+// RemoveObject removes an object from the level.
+func (level *Level) RemoveObject(objectIndex int) (err error) {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
+	if (objectIndex > 0) && (objectIndex < len(level.objectList)) {
+		objectEntry := &level.objectList[objectIndex]
+
+		if objectEntry.IsInUse() {
+			classMeta := data.LevelObjectClassMetaEntry(objectEntry.Class)
+			classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + int(objectEntry.Class)))
+			classTable := logic.DecodeLevelObjectClassTable(classStore.BlockData(0), classMeta.EntrySize)
+			classChain := classTable.AsChain()
+
+			level.crossrefList.RemoveEntriesFromMap(logic.CrossReferenceListIndex(objectEntry.CrossReferenceTableIndex), level.tileMap)
+			classChain.ReleaseLink(data.LevelObjectChainIndex(objectEntry.ClassTableIndex))
+			level.objectChain.ReleaseLink(data.LevelObjectChainIndex(objectIndex))
+			objectEntry.InUse = 0
+
+			level.onObjectListChanged(classStore, classTable)
+		}
+	}
+
+	return
+}
+
 // AddObject adds a new object at given tile.
-func (level *Level) AddObject(template *model.LevelObjectTemplate) (createdIndex int, err error) {
+func (level *Level) AddObject(template *model.LevelObjectTemplate) (entry model.LevelObject, err error) {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
 
@@ -250,7 +279,6 @@ func (level *Level) AddObject(template *model.LevelObjectTemplate) (createdIndex
 		err = objectErr
 		return
 	}
-	createdIndex = int(objectIndex)
 
 	locations := []logic.TileLocation{logic.AtTile(uint16(template.TileX), uint16(template.TileY))}
 
@@ -282,6 +310,13 @@ func (level *Level) AddObject(template *model.LevelObjectTemplate) (createdIndex
 	objectEntry.ClassTableIndex = uint16(classIndex)
 	classEntry.LevelObjectTableIndex = uint16(objectIndex)
 
+	level.onObjectListChanged(classStore, classTable)
+	entry = level.objectFromRawEntry(int(objectIndex), objectEntry)
+
+	return
+}
+
+func (level *Level) onObjectListChanged(classStore chunk.BlockStore, classTable *logic.LevelObjectClassTable) {
 	classStore.SetBlockData(0, classTable.Encode())
 
 	objWriter := bytes.NewBuffer(nil)
@@ -290,8 +325,6 @@ func (level *Level) AddObject(template *model.LevelObjectTemplate) (createdIndex
 
 	level.crossrefListStore.SetBlockData(0, level.crossrefList.Encode())
 	level.onTileDataChanged()
-
-	return
 }
 
 func (level *Level) readTable(levelBlockID int, value interface{}) {
