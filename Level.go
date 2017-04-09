@@ -172,15 +172,6 @@ func (level *Level) SetTextures(newIds []int) {
 	blockStore.SetBlockData(0, buffer.Bytes())
 }
 
-func bytesToIntArray(bs []byte) []int {
-	result := make([]int, len(bs))
-	for index, value := range bs {
-		result[index] = int(value)
-	}
-
-	return result
-}
-
 // Objects returns an array of all used objects.
 func (level *Level) Objects() []model.LevelObject {
 	level.mutex.Lock()
@@ -197,17 +188,24 @@ func (level *Level) Objects() []model.LevelObject {
 	return result
 }
 
+func intAsPointer(value int) (ptr *int) {
+	ptr = new(int)
+	*ptr = value
+	return
+}
+
 func (level *Level) objectFromRawEntry(index int, rawEntry *data.LevelObjectEntry) (entry model.LevelObject) {
 	entry.Identifiable = model.Identifiable{ID: fmt.Sprintf("%d", index)}
 	entry.Class = int(rawEntry.Class)
-	entry.Subclass = int(rawEntry.Subclass)
-	entry.Type = int(rawEntry.Type)
 
-	entry.BaseProperties.TileX = int(rawEntry.X >> 8)
-	entry.BaseProperties.FineX = int(rawEntry.X & 0xFF)
-	entry.BaseProperties.TileY = int(rawEntry.Y >> 8)
-	entry.BaseProperties.FineY = int(rawEntry.Y & 0xFF)
-	entry.BaseProperties.Z = int(rawEntry.Z)
+	entry.Properties.Subclass = intAsPointer(int(rawEntry.Subclass))
+	entry.Properties.Type = intAsPointer(int(rawEntry.Type))
+
+	entry.Properties.TileX = intAsPointer(int(rawEntry.X >> 8))
+	entry.Properties.FineX = intAsPointer(int(rawEntry.X & 0xFF))
+	entry.Properties.TileY = intAsPointer(int(rawEntry.Y >> 8))
+	entry.Properties.FineY = intAsPointer(int(rawEntry.Y & 0xFF))
+	entry.Properties.Z = intAsPointer(int(rawEntry.Z))
 
 	meta := data.LevelObjectClassMetaEntry(rawEntry.Class)
 	classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + entry.Class))
@@ -217,7 +215,7 @@ func (level *Level) objectFromRawEntry(index int, rawEntry *data.LevelObjectEntr
 		fmt.Printf("!!!!! class %d meta says %d bytes size, can't reach index %d in blockData %d",
 			int(entry.Class), meta.EntrySize, rawEntry.ClassTableIndex, len(blockData))
 	} else {
-		entry.ClassData = bytesToIntArray(blockData[startOffset+data.LevelObjectPrefixSize : startOffset+meta.EntrySize])
+		entry.Properties.ClassData = blockData[startOffset+data.LevelObjectPrefixSize : startOffset+meta.EntrySize]
 	}
 
 	return
@@ -312,6 +310,63 @@ func (level *Level) AddObject(template *model.LevelObjectTemplate) (entry model.
 
 	level.onObjectListChanged(classStore, classTable)
 	entry = level.objectFromRawEntry(int(objectIndex), objectEntry)
+
+	return
+}
+
+// SetObject modifies the properties of identified object.
+func (level *Level) SetObject(objectIndex int, newProperties *model.LevelObjectProperties) (properties model.LevelObjectProperties, err error) {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
+	if (objectIndex > 0) && (objectIndex < len(level.objectList)) {
+		objectEntry := &level.objectList[objectIndex]
+
+		if objectEntry.IsInUse() {
+			classMeta := data.LevelObjectClassMetaEntry(objectEntry.Class)
+			classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + int(objectEntry.Class)))
+			classTable := logic.DecodeLevelObjectClassTable(classStore.BlockData(0), classMeta.EntrySize)
+
+			if newProperties.Subclass != nil {
+				objectEntry.Subclass = res.ObjectSubclass(*newProperties.Subclass)
+			}
+			if newProperties.Type != nil {
+				objectEntry.Type = res.ObjectType(*newProperties.Type)
+			}
+			if newProperties.Z != nil {
+				objectEntry.Z = byte(*newProperties.Z)
+			}
+			newTileX, newFineX := objectEntry.X.Tile(), objectEntry.X.Offset()
+			if newProperties.TileX != nil {
+				newTileX = byte(*newProperties.TileX)
+			}
+			if newProperties.FineX != nil {
+				newFineX = byte(*newProperties.FineX)
+			}
+			objectEntry.X = data.MapCoordinateOf(newTileX, newFineX)
+			newTileY, newFineY := objectEntry.Y.Tile(), objectEntry.Y.Offset()
+			if newProperties.TileY != nil {
+				newTileY = byte(*newProperties.TileY)
+			}
+			if newProperties.FineY != nil {
+				newFineY = byte(*newProperties.FineY)
+			}
+			objectEntry.Y = data.MapCoordinateOf(newTileY, newFineY)
+
+			if len(newProperties.ClassData) > 0 {
+				classEntry := classTable.Entry(data.LevelObjectChainIndex(objectEntry.ClassTableIndex))
+
+				copy(classEntry.Data(), newProperties.ClassData)
+			}
+
+			level.onObjectListChanged(classStore, classTable)
+			properties = level.objectFromRawEntry(int(objectIndex), objectEntry).Properties
+		} else {
+			err = fmt.Errorf("Object is not in use")
+		}
+	} else {
+		err = fmt.Errorf("Invalid object index")
+	}
 
 	return
 }

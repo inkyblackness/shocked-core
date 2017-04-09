@@ -445,3 +445,24 @@ func (inplace *InplaceDataStore) RemoveLevelObject(projectID string, archiveID s
 		}
 	})
 }
+
+// SetLevelObject implements the model.DataStore interface
+func (inplace *InplaceDataStore) SetLevelObject(projectID string, archiveID string, levelID int, objectID int,
+	properties *model.LevelObjectProperties, onSuccess func(properties *model.LevelObjectProperties), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			level := project.Archive().Level(levelID)
+			var newProperties model.LevelObjectProperties
+
+			newProperties, err = level.SetObject(objectID, properties)
+			if err == nil {
+				inplace.out(func() { onSuccess(&newProperties) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
