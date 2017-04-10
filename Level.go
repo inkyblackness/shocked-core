@@ -207,6 +207,11 @@ func (level *Level) objectFromRawEntry(index int, rawEntry *data.LevelObjectEntr
 	entry.Properties.FineY = intAsPointer(int(rawEntry.Y & 0xFF))
 	entry.Properties.Z = intAsPointer(int(rawEntry.Z))
 
+	entry.Properties.RotationX = intAsPointer(int(rawEntry.Rot1))
+	entry.Properties.RotationY = intAsPointer(int(rawEntry.Rot3))
+	entry.Properties.RotationZ = intAsPointer(int(rawEntry.Rot2))
+	entry.Properties.Hitpoints = intAsPointer(int(rawEntry.Hitpoints))
+
 	meta := data.LevelObjectClassMetaEntry(rawEntry.Class)
 	classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + entry.Class))
 	blockData := classStore.BlockData(0)
@@ -326,6 +331,7 @@ func (level *Level) SetObject(objectIndex int, newProperties *model.LevelObjectP
 			classMeta := data.LevelObjectClassMetaEntry(objectEntry.Class)
 			classStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 10 + int(objectEntry.Class)))
 			classTable := logic.DecodeLevelObjectClassTable(classStore.BlockData(0), classMeta.EntrySize)
+			changedTile := false
 
 			if newProperties.Subclass != nil {
 				objectEntry.Subclass = res.ObjectSubclass(*newProperties.Subclass)
@@ -337,26 +343,62 @@ func (level *Level) SetObject(objectIndex int, newProperties *model.LevelObjectP
 				objectEntry.Z = byte(*newProperties.Z)
 			}
 			newTileX, newFineX := objectEntry.X.Tile(), objectEntry.X.Offset()
-			if newProperties.TileX != nil {
+			if (newProperties.TileX != nil) && (newTileX != byte(*newProperties.TileX)) {
 				newTileX = byte(*newProperties.TileX)
+				changedTile = true
 			}
 			if newProperties.FineX != nil {
 				newFineX = byte(*newProperties.FineX)
 			}
 			objectEntry.X = data.MapCoordinateOf(newTileX, newFineX)
 			newTileY, newFineY := objectEntry.Y.Tile(), objectEntry.Y.Offset()
-			if newProperties.TileY != nil {
+			if (newProperties.TileY != nil) && (newTileY != byte(*newProperties.TileY)) {
 				newTileY = byte(*newProperties.TileY)
+				changedTile = true
 			}
 			if newProperties.FineY != nil {
 				newFineY = byte(*newProperties.FineY)
 			}
 			objectEntry.Y = data.MapCoordinateOf(newTileY, newFineY)
 
+			if newProperties.RotationX != nil {
+				objectEntry.Rot1 = byte(*newProperties.RotationX)
+			}
+			if newProperties.RotationY != nil {
+				objectEntry.Rot3 = byte(*newProperties.RotationY)
+			}
+			if newProperties.RotationZ != nil {
+				objectEntry.Rot2 = byte(*newProperties.RotationZ)
+			}
+			if newProperties.Hitpoints != nil {
+				objectEntry.Hitpoints = uint16(*newProperties.Hitpoints)
+			}
+
 			if len(newProperties.ClassData) > 0 {
 				classEntry := classTable.Entry(data.LevelObjectChainIndex(objectEntry.ClassTableIndex))
 
 				copy(classEntry.Data(), newProperties.ClassData)
+			}
+			if changedTile {
+				locations := []logic.TileLocation{logic.AtTile(uint16(newTileX), uint16(newTileY))}
+
+				if objectEntry.CrossReferenceTableIndex != 0 {
+					level.crossrefList.RemoveEntriesFromMap(logic.CrossReferenceListIndex(objectEntry.CrossReferenceTableIndex), level.tileMap)
+					objectEntry.CrossReferenceTableIndex = 0
+				}
+
+				crossrefIndex, crossrefErr := level.crossrefList.AddObjectToMap(uint16(objectIndex), level.tileMap, locations)
+				if crossrefErr != nil {
+					// This is a kind of bad (and weird) situation.
+					// The object, which was already stored, can not be stored anymore (?) and is furthermore left
+					// in an incorrect state.
+					err = crossrefErr
+					return
+				}
+				crossrefEntry := level.crossrefList.Entry(crossrefIndex)
+
+				objectEntry.CrossReferenceTableIndex = uint16(crossrefIndex)
+				crossrefEntry.LevelObjectTableIndex = uint16(objectIndex)
 			}
 
 			level.onObjectListChanged(classStore, classTable)
