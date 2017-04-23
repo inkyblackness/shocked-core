@@ -75,6 +75,8 @@ type Level struct {
 
 	mutex sync.Mutex
 
+	isCyberspace bool
+
 	tileMapStore chunk.BlockStore
 	tileMap      *logic.TileMap
 
@@ -115,6 +117,9 @@ func NewLevel(store chunk.Store, id int) *Level {
 			})
 	}
 
+	info := level.information()
+	level.isCyberspace = info.IsCyberspace()
+
 	return level
 }
 
@@ -127,13 +132,20 @@ func (level *Level) ID() int {
 	return level.id
 }
 
-// Properties returns the properties of the level.
-func (level *Level) Properties() (result model.LevelProperties) {
+func (level *Level) information() data.LevelInformation {
 	blockData := level.store.Get(res.ResourceID(4000 + level.id*100 + 4)).BlockData(0)
 	reader := bytes.NewReader(blockData)
 	var info data.LevelInformation
 
 	binary.Read(reader, binary.LittleEndian, &info)
+
+	return info
+}
+
+// Properties returns the properties of the level.
+func (level *Level) Properties() (result model.LevelProperties) {
+	info := level.information()
+
 	result.CyberspaceFlag = info.IsCyberspace()
 	result.HeightShift = int(info.HeightShift)
 
@@ -653,7 +665,9 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 		result.CalculatedWallHeights.West = level.calculateWallHeight(entry, DirWest, x-1, y, DirEast)
 	}
 
-	{
+	result.MusicIndex = intAsPointer(entry.Flags.MusicIndex())
+
+	if !level.isCyberspace {
 		var properties model.RealWorldTileProperties
 		var textureIDs = uint16(entry.Textures)
 
@@ -701,7 +715,10 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 	if properties.SlopeControl != nil {
 		flags = (flags & ^uint32(0x00000C00)) | (uint32(slopeControl(*properties.SlopeControl)) << 10)
 	}
-	if properties.RealWorld != nil {
+	if properties.MusicIndex != nil {
+		flags = uint32(data.TileFlag(flags).WithMusicIndex(*properties.MusicIndex))
+	}
+	if !level.isCyberspace && (properties.RealWorld != nil) {
 		var textureIDs = uint16(entry.Textures)
 
 		if properties.RealWorld.FloorTexture != nil && (*properties.RealWorld.FloorTexture < 0x20) {
