@@ -206,6 +206,12 @@ func intAsPointer(value int) (ptr *int) {
 	return
 }
 
+func boolAsPointer(value bool) (ptr *bool) {
+	ptr = new(bool)
+	*ptr = value
+	return
+}
+
 func (level *Level) objectFromRawEntry(index int, rawEntry *data.LevelObjectEntry) (entry model.LevelObject) {
 	entry.Identifiable = model.Identifiable{ID: fmt.Sprintf("%d", index)}
 	entry.Class = int(rawEntry.Class)
@@ -671,21 +677,18 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 		var properties model.RealWorldTileProperties
 		var textureIDs = uint16(entry.Textures)
 
-		properties.WallTexture = new(int)
-		*properties.WallTexture = int(textureIDs & 0x3F)
-		properties.CeilingTexture = new(int)
-		*properties.CeilingTexture = int((textureIDs >> 6) & 0x1F)
-		properties.CeilingTextureRotations = new(int)
-		*properties.CeilingTextureRotations = int((entry.Ceiling >> 5) & 0x03)
-		properties.FloorTexture = new(int)
-		*properties.FloorTexture = int((textureIDs >> 11) & 0x1F)
-		properties.FloorTextureRotations = new(int)
-		*properties.FloorTextureRotations = int((entry.Floor >> 5) & 0x03)
+		properties.WallTexture = intAsPointer(int(textureIDs & 0x3F))
+		properties.CeilingTexture = intAsPointer(int((textureIDs >> 6) & 0x1F))
+		properties.CeilingTextureRotations = intAsPointer(int((entry.Ceiling >> 5) & 0x03))
+		properties.FloorTexture = intAsPointer(int((textureIDs >> 11) & 0x1F))
+		properties.FloorTextureRotations = intAsPointer(int((entry.Floor >> 5) & 0x03))
 
-		properties.UseAdjacentWallTexture = new(bool)
-		*properties.UseAdjacentWallTexture = (entry.Flags & 0x00000100) != 0
+		properties.UseAdjacentWallTexture = boolAsPointer((entry.Flags & 0x00000100) != 0)
 		properties.WallTextureOffset = new(model.HeightUnit)
 		*properties.WallTextureOffset = model.HeightUnit(entry.Flags & 0x0000001F)
+
+		properties.FloorHazard = boolAsPointer((entry.Floor & 0x80) != 0)
+		properties.CeilingHazard = boolAsPointer((entry.Ceiling & 0x80) != 0)
 
 		result.RealWorld = &properties
 	}
@@ -744,6 +747,18 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 		}
 		if properties.RealWorld.WallTextureOffset != nil && *properties.RealWorld.WallTextureOffset < 0x20 {
 			flags = (flags & ^uint32(0x0000001F)) | uint32(*properties.RealWorld.WallTextureOffset)
+		}
+		if properties.RealWorld.FloorHazard != nil {
+			entry.Floor &= 0x7F
+			if *properties.RealWorld.FloorHazard {
+				entry.Floor |= 0x80
+			}
+		}
+		if properties.RealWorld.CeilingHazard != nil {
+			entry.Ceiling &= 0x7F
+			if *properties.RealWorld.CeilingHazard {
+				entry.Ceiling |= 0x80
+			}
 		}
 
 		entry.Textures = data.TileTextureInfo(textureIDs)
