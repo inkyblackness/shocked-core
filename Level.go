@@ -690,6 +690,9 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 		properties.FloorHazard = boolAsPointer((entry.Floor & 0x80) != 0)
 		properties.CeilingHazard = boolAsPointer((entry.Ceiling & 0x80) != 0)
 
+		properties.FloorShadow = intAsPointer(entry.Flags.FloorShadow())
+		properties.CeilingShadow = intAsPointer(entry.Flags.CeilingShadow())
+
 		result.RealWorld = &properties
 	}
 
@@ -759,6 +762,12 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 			if *properties.RealWorld.CeilingHazard {
 				entry.Ceiling |= 0x80
 			}
+		}
+		if properties.RealWorld.FloorShadow != nil {
+			flags = uint32(data.TileFlag(flags).WithFloorShadow(*properties.RealWorld.FloorShadow))
+		}
+		if properties.RealWorld.CeilingShadow != nil {
+			flags = uint32(data.TileFlag(flags).WithCeilingShadow(*properties.RealWorld.CeilingShadow))
 		}
 
 		entry.Textures = data.TileTextureInfo(textureIDs)
