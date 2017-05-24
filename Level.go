@@ -323,7 +323,10 @@ func (level *Level) AddObject(template *model.LevelObjectTemplate) (entry model.
 	objectEntry.Rot1 = 0
 	objectEntry.Rot2 = 0
 	objectEntry.Rot3 = 0
-	objectEntry.Hitpoints = 1
+	objectEntry.Hitpoints = uint16(template.Hitpoints)
+	if objectEntry.Hitpoints == 0 {
+		objectEntry.Hitpoints = 1
+	}
 
 	objectEntry.CrossReferenceTableIndex = uint16(crossrefIndex)
 	crossrefEntry.LevelObjectTableIndex = uint16(objectIndex)
