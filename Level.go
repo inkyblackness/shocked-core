@@ -14,6 +14,8 @@ import (
 	model "github.com/inkyblackness/shocked-model"
 )
 
+const surveillanceSources = 8
+
 var tileTypes = map[data.TileType]model.TileType{
 	data.Solid: model.Solid,
 	data.Open:  model.Open,
@@ -86,6 +88,9 @@ type Level struct {
 
 	crossrefListStore chunk.BlockStore
 	crossrefList      *logic.CrossReferenceList
+
+	surveillanceSourceStore     chunk.BlockStore
+	surveillanceDeathwatchStore chunk.BlockStore
 }
 
 // NewLevel returns a new instance of a Level structure.
@@ -100,7 +105,10 @@ func NewLevel(store chunk.Store, id int) *Level {
 
 		objectListStore: store.Get(res.ResourceID(baseStoreID + 8)),
 
-		crossrefListStore: store.Get(res.ResourceID(baseStoreID + 9))}
+		crossrefListStore: store.Get(res.ResourceID(baseStoreID + 9)),
+
+		surveillanceSourceStore:     store.Get(res.ResourceID(baseStoreID + 43)),
+		surveillanceDeathwatchStore: store.Get(res.ResourceID(baseStoreID + 44))}
 
 	level.tileMap = logic.DecodeTileMap(level.tileMapStore.BlockData(0), 64, 64)
 	level.crossrefList = logic.DecodeCrossReferenceList(level.crossrefListStore.BlockData(0))
@@ -778,4 +786,62 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 	entry.Flags = data.TileFlag(flags)
 
 	level.onTileDataChanged()
+}
+
+// LevelSurveillanceObjects returns the surveillance objects of this level
+func (level *Level) LevelSurveillanceObjects() []model.SurveillanceObject {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
+	return level.makeSurveillanceObjects(level.readSurveillanceObjects())
+}
+
+// SetLevelSurveillanceObject updates one surveillance object
+func (level *Level) SetLevelSurveillanceObject(index int, data model.SurveillanceObject) []model.SurveillanceObject {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
+	sources, deathwatches := level.readSurveillanceObjects()
+
+	if (index >= 0) && (index < len(sources)) {
+		if data.SourceIndex != nil {
+			sources[index] = int16(*data.SourceIndex)
+		}
+		if data.DeathwatchIndex != nil {
+			deathwatches[index] = int16(*data.DeathwatchIndex)
+		}
+
+		storeArray := func(store chunk.BlockStore, data []int16) {
+			writer := bytes.NewBuffer(nil)
+			binary.Write(writer, binary.LittleEndian, data)
+			store.SetBlockData(0, writer.Bytes())
+		}
+		storeArray(level.surveillanceSourceStore, sources)
+		storeArray(level.surveillanceDeathwatchStore, deathwatches)
+	}
+
+	return level.makeSurveillanceObjects(sources, deathwatches)
+}
+
+func (level *Level) readSurveillanceObjects() (sources []int16, deathwatches []int16) {
+	sources = make([]int16, surveillanceSources)
+	deathwatches = make([]int16, surveillanceSources)
+	sourceData := level.surveillanceSourceStore.BlockData(0)
+	deathwatchData := level.surveillanceDeathwatchStore.BlockData(0)
+
+	binary.Read(bytes.NewReader(sourceData), binary.LittleEndian, &sources)
+	binary.Read(bytes.NewReader(deathwatchData), binary.LittleEndian, &deathwatches)
+
+	return
+}
+
+func (level *Level) makeSurveillanceObjects(sources []int16, deathwatches []int16) []model.SurveillanceObject {
+	objects := make([]model.SurveillanceObject, len(sources))
+
+	for index := 0; index < len(sources); index++ {
+		objects[index].SourceIndex = intAsPointer(int(sources[index]))
+		objects[index].DeathwatchIndex = intAsPointer(int(deathwatches[index]))
+	}
+
+	return objects
 }
