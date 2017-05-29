@@ -222,6 +222,44 @@ func (inplace *InplaceDataStore) Levels(projectID string, archiveID string,
 	})
 }
 
+// LevelProperties implements the model.DataStore interface.
+func (inplace *InplaceDataStore) LevelProperties(projectID string, archiveID string, levelID int,
+	onSuccess func(properties model.LevelProperties), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			level := project.Archive().Level(levelID)
+			properties := level.Properties()
+
+			inplace.out(func() { onSuccess(properties) })
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// SetLevelProperties implements the model.DataStore interface.
+func (inplace *InplaceDataStore) SetLevelProperties(projectID string, archiveID string, levelID int, properties model.LevelProperties,
+	onSuccess func(properties model.LevelProperties), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			level := project.Archive().Level(levelID)
+
+			level.SetProperties(properties)
+			result := level.Properties()
+
+			inplace.out(func() { onSuccess(result) })
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
 // LevelTextures implements the model.DataStore interface
 func (inplace *InplaceDataStore) LevelTextures(projectID string, archiveID string, levelID int,
 	onSuccess func(textureIDs []int), onFailure model.FailureFunc) {

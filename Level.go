@@ -77,8 +77,6 @@ type Level struct {
 
 	mutex sync.Mutex
 
-	isCyberspace bool
-
 	tileMapStore chunk.BlockStore
 	tileMap      *logic.TileMap
 
@@ -125,9 +123,6 @@ func NewLevel(store chunk.Store, id int) *Level {
 			})
 	}
 
-	info := level.information()
-	level.isCyberspace = info.IsCyberspace()
-
 	return level
 }
 
@@ -150,6 +145,11 @@ func (level *Level) information() data.LevelInformation {
 	return info
 }
 
+func (level *Level) isCyberspace() bool {
+	info := level.information()
+	return info.IsCyberspace()
+}
+
 // Properties returns the properties of the level.
 func (level *Level) Properties() (result model.LevelProperties) {
 	info := level.information()
@@ -158,6 +158,28 @@ func (level *Level) Properties() (result model.LevelProperties) {
 	result.HeightShift = intAsPointer(int(info.HeightShift))
 
 	return
+}
+
+// SetProperties updates the properties of a level.
+func (level *Level) SetProperties(properties model.LevelProperties) {
+	infoStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 4))
+	infoData := infoStore.BlockData(0)
+	infoReader := bytes.NewReader(infoData)
+	infoWriter := bytes.NewBuffer(nil)
+	var info data.LevelInformation
+
+	binary.Read(infoReader, binary.LittleEndian, &info)
+	if properties.CyberspaceFlag != nil {
+		info.CyberspaceFlag = 0
+		if *properties.CyberspaceFlag {
+			info.CyberspaceFlag = 1
+		}
+	}
+	if properties.HeightShift != nil {
+		info.HeightShift = uint32(*properties.HeightShift)
+	}
+	binary.Write(infoWriter, binary.LittleEndian, &info)
+	infoStore.SetBlockData(0, infoWriter.Bytes())
 }
 
 // Textures returns the texture identifier used in this level.
@@ -684,7 +706,7 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 
 	result.MusicIndex = intAsPointer(entry.Flags.MusicIndex())
 
-	if !level.isCyberspace {
+	if !level.isCyberspace() {
 		var properties model.RealWorldTileProperties
 		var textureIDs = uint16(entry.Textures)
 
@@ -735,7 +757,7 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 	if properties.MusicIndex != nil {
 		flags = uint32(data.TileFlag(flags).WithMusicIndex(*properties.MusicIndex))
 	}
-	if !level.isCyberspace && (properties.RealWorld != nil) {
+	if !level.isCyberspace() && (properties.RealWorld != nil) {
 		var textureIDs = uint16(entry.Textures)
 
 		if properties.RealWorld.FloorTexture != nil && (*properties.RealWorld.FloorTexture < 0x20) {
