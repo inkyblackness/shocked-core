@@ -202,37 +202,24 @@ func (inplace *InplaceDataStore) Levels(projectID string, archiveID string,
 		project, err := inplace.workspace.Project(projectID)
 
 		if err == nil {
-			var entity model.Levels
 			archive := project.Archive()
 			levelIDs := archive.LevelIDs()
+			result := []model.Level{}
 
-			for _, id := range levelIDs {
-				entry := inplace.getLevelEntity(project, archive, id)
-
-				entity.List = append(entity.List, entry)
+			for _, levelID := range levelIDs {
+				level := archive.Level(levelID)
+				var entry model.Level
+				entry.ID = levelID
+				entry.Properties = level.Properties()
+				result = append(result, entry)
 			}
 
-			inplace.out(func() { onSuccess(entity.List) })
+			inplace.out(func() { onSuccess(result) })
 		}
 		if err != nil {
 			inplace.out(onFailure)
 		}
 	})
-}
-
-func (inplace *InplaceDataStore) getLevelEntity(project *Project, archive *Archive, levelID int) (entity model.Level) {
-	entity.ID = fmt.Sprintf("%d", levelID)
-	entity.Href = "/projects/" + project.Name() + "/archive/levels/" + entity.ID
-	level := archive.Level(levelID)
-	entity.Properties = level.Properties()
-
-	entity.Links = []model.Link{}
-	entity.Links = append(entity.Links, model.Link{Rel: "tiles", Href: entity.Href + "/tiles/{y}/{x}"})
-	if !entity.Properties.CyberspaceFlag {
-		entity.Links = append(entity.Links, model.Link{Rel: "textures", Href: entity.Href + "/textures"})
-	}
-
-	return
 }
 
 // LevelTextures implements the model.DataStore interface

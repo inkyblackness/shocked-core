@@ -154,8 +154,8 @@ func (level *Level) information() data.LevelInformation {
 func (level *Level) Properties() (result model.LevelProperties) {
 	info := level.information()
 
-	result.CyberspaceFlag = info.IsCyberspace()
-	result.HeightShift = int(info.HeightShift)
+	result.CyberspaceFlag = boolAsPointer(info.IsCyberspace())
+	result.HeightShift = intAsPointer(int(info.HeightShift))
 
 	return
 }
