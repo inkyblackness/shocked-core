@@ -207,10 +207,8 @@ func (inplace *InplaceDataStore) Levels(projectID string, archiveID string,
 			result := []model.Level{}
 
 			for _, levelID := range levelIDs {
-				level := archive.Level(levelID)
 				var entry model.Level
 				entry.ID = levelID
-				entry.Properties = level.Properties()
 				result = append(result, entry)
 			}
 
