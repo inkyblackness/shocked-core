@@ -145,6 +145,16 @@ func (level *Level) information() data.LevelInformation {
 	return info
 }
 
+func (level *Level) variables() data.LevelVariables {
+	blockData := level.store.Get(res.ResourceID(4000 + level.id*100 + 45)).BlockData(0)
+	reader := bytes.NewReader(blockData)
+	var info data.LevelVariables
+
+	binary.Read(reader, binary.LittleEndian, &info)
+
+	return info
+}
+
 func (level *Level) isCyberspace() bool {
 	info := level.information()
 	return info.IsCyberspace()
@@ -153,33 +163,76 @@ func (level *Level) isCyberspace() bool {
 // Properties returns the properties of the level.
 func (level *Level) Properties() (result model.LevelProperties) {
 	info := level.information()
+	vars := level.variables()
 
 	result.CyberspaceFlag = boolAsPointer(info.IsCyberspace())
 	result.HeightShift = intAsPointer(int(info.HeightShift))
+	result.CeilingHasRadiation = boolAsPointer(vars.RadiationRegister > 1)
+	result.CeilingEffectLevel = intAsPointer(int(vars.Radiation))
+	result.FloorHasBiohazard = boolAsPointer(vars.BioRegister > 1)
+	result.FloorHasGravity = boolAsPointer(vars.GravitySwitch != 0)
+	result.FloorEffectLevel = intAsPointer(int(vars.BioOrGravity))
 
 	return
 }
 
 // SetProperties updates the properties of a level.
 func (level *Level) SetProperties(properties model.LevelProperties) {
-	infoStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 4))
-	infoData := infoStore.BlockData(0)
-	infoReader := bytes.NewReader(infoData)
-	infoWriter := bytes.NewBuffer(nil)
-	var info data.LevelInformation
+	{
+		infoStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 4))
+		infoData := infoStore.BlockData(0)
+		infoReader := bytes.NewReader(infoData)
+		infoWriter := bytes.NewBuffer(nil)
+		var info data.LevelInformation
 
-	binary.Read(infoReader, binary.LittleEndian, &info)
-	if properties.CyberspaceFlag != nil {
-		info.CyberspaceFlag = 0
-		if *properties.CyberspaceFlag {
-			info.CyberspaceFlag = 1
+		binary.Read(infoReader, binary.LittleEndian, &info)
+		if properties.CyberspaceFlag != nil {
+			info.CyberspaceFlag = 0
+			if *properties.CyberspaceFlag {
+				info.CyberspaceFlag = 1
+			}
 		}
+		if properties.HeightShift != nil {
+			info.HeightShift = uint32(*properties.HeightShift)
+		}
+		binary.Write(infoWriter, binary.LittleEndian, &info)
+		infoStore.SetBlockData(0, infoWriter.Bytes())
 	}
-	if properties.HeightShift != nil {
-		info.HeightShift = uint32(*properties.HeightShift)
+	{
+		varsStore := level.store.Get(res.ResourceID(4000 + level.id*100 + 45))
+		varsData := varsStore.BlockData(0)
+		varsReader := bytes.NewReader(varsData)
+		varsWriter := bytes.NewBuffer(nil)
+		var vars data.LevelVariables
+
+		binary.Read(varsReader, binary.LittleEndian, &vars)
+		if properties.CeilingHasRadiation != nil {
+			vars.RadiationRegister = 0
+			if *properties.CeilingHasRadiation {
+				vars.RadiationRegister = 2
+			}
+		}
+		if properties.CeilingEffectLevel != nil {
+			vars.Radiation = byte(*properties.CeilingEffectLevel)
+		}
+		if properties.FloorHasBiohazard != nil {
+			vars.BioRegister = 0
+			if *properties.FloorHasBiohazard {
+				vars.BioRegister = 2
+			}
+		}
+		if properties.FloorHasGravity != nil {
+			vars.GravitySwitch = 0
+			if *properties.FloorHasGravity {
+				vars.GravitySwitch = 1
+			}
+		}
+		if properties.FloorEffectLevel != nil {
+			vars.BioOrGravity = byte(*properties.FloorEffectLevel)
+		}
+		binary.Write(varsWriter, binary.LittleEndian, &vars)
+		varsStore.SetBlockData(0, varsWriter.Bytes())
 	}
-	binary.Write(infoWriter, binary.LittleEndian, &info)
-	infoStore.SetBlockData(0, infoWriter.Bytes())
 }
 
 // Textures returns the texture identifier used in this level.
