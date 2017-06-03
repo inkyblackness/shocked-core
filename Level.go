@@ -772,6 +772,7 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 		properties.UseAdjacentWallTexture = boolAsPointer((entry.Flags & 0x00000100) != 0)
 		properties.WallTextureOffset = new(model.HeightUnit)
 		*properties.WallTextureOffset = model.HeightUnit(entry.Flags & 0x0000001F)
+		properties.WallTexturePattern = intAsPointer(int((entry.Flags >> 5) & 0x00000003))
 
 		properties.FloorHazard = boolAsPointer((entry.Floor & 0x80) != 0)
 		properties.CeilingHazard = boolAsPointer((entry.Ceiling & 0x80) != 0)
@@ -779,7 +780,20 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 		properties.FloorShadow = intAsPointer(entry.Flags.FloorShadow())
 		properties.CeilingShadow = intAsPointer(entry.Flags.CeilingShadow())
 
+		properties.SpookyMusic = boolAsPointer((entry.Flags & 0x00000200) != 0)
+
 		result.RealWorld = &properties
+	} else {
+		var properties model.CyberspaceTileProperties
+		var colors = uint16(entry.Textures)
+
+		properties.FloorColorIndex = intAsPointer(int((colors >> 0) & 0x00FF))
+		properties.CeilingColorIndex = intAsPointer(int((colors >> 8) & 0x00FF))
+
+		properties.FlightPullType = intAsPointer(int((entry.Flags >> 16) & 0xF))
+		properties.GameOfLifeSet = boolAsPointer((entry.Flags & 0x00000040) != 0)
+
+		result.Cyberspace = &properties
 	}
 
 	return
@@ -789,6 +803,7 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 func (level *Level) SetTileProperties(x, y int, properties model.TileProperties) {
 	level.mutex.Lock()
 	defer level.mutex.Unlock()
+	isCyberspace := level.isCyberspace()
 
 	entry := level.tileMap.Entry(logic.AtTile(uint16(x), uint16(y)))
 	flags := uint32(entry.Flags)
@@ -810,7 +825,7 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 	if properties.MusicIndex != nil {
 		flags = uint32(data.TileFlag(flags).WithMusicIndex(*properties.MusicIndex))
 	}
-	if !level.isCyberspace() && (properties.RealWorld != nil) {
+	if !isCyberspace && (properties.RealWorld != nil) {
 		var textureIDs = uint16(entry.Textures)
 
 		if properties.RealWorld.FloorTexture != nil && (*properties.RealWorld.FloorTexture < 0x20) {
@@ -837,6 +852,9 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 		if properties.RealWorld.WallTextureOffset != nil && *properties.RealWorld.WallTextureOffset < 0x20 {
 			flags = (flags & ^uint32(0x0000001F)) | uint32(*properties.RealWorld.WallTextureOffset)
 		}
+		if properties.RealWorld.WallTexturePattern != nil {
+			flags = (flags & ^uint32(0x00000060) | (uint32(*properties.RealWorld.WallTexturePattern) << 5))
+		}
 		if properties.RealWorld.FloorHazard != nil {
 			entry.Floor &= 0x7F
 			if *properties.RealWorld.FloorHazard {
@@ -855,8 +873,34 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 		if properties.RealWorld.CeilingShadow != nil {
 			flags = uint32(data.TileFlag(flags).WithCeilingShadow(*properties.RealWorld.CeilingShadow))
 		}
+		if properties.RealWorld.SpookyMusic != nil {
+			flags = flags & ^uint32(0x00000200)
+			if *properties.RealWorld.SpookyMusic {
+				flags |= 0x00000200
+			}
+		}
 
 		entry.Textures = data.TileTextureInfo(textureIDs)
+	} else if isCyberspace && properties.Cyberspace != nil {
+		var colors = uint16(entry.Textures)
+
+		if properties.Cyberspace.FloorColorIndex != nil {
+			colors = (colors & 0xFF00) | (uint16(*properties.Cyberspace.FloorColorIndex) << 0)
+		}
+		if properties.Cyberspace.CeilingColorIndex != nil {
+			colors = (colors & 0x00FF) | (uint16(*properties.Cyberspace.CeilingColorIndex) << 8)
+		}
+		if properties.Cyberspace.FlightPullType != nil {
+			flags = (flags & ^uint32(0x000F0000)) | (uint32(*properties.Cyberspace.FlightPullType) << 16)
+		}
+		if properties.Cyberspace.GameOfLifeSet != nil {
+			flags = flags & ^uint32(0x00000040)
+			if *properties.Cyberspace.GameOfLifeSet {
+				flags |= 0x00000040
+			}
+		}
+
+		entry.Textures = data.TileTextureInfo(colors)
 	}
 	entry.Flags = data.TileFlag(flags)
 
