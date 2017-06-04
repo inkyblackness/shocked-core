@@ -297,21 +297,20 @@ func (inplace *InplaceDataStore) SetLevelTextures(projectID string, archiveID st
 
 // Textures implements the model.DataStore interface
 func (inplace *InplaceDataStore) Textures(projectID string,
-	onSuccess func(textures []model.Texture), onFailure model.FailureFunc) {
+	onSuccess func(textures []model.TextureProperties), onFailure model.FailureFunc) {
 	inplace.in(func() {
 		project, err := inplace.workspace.Project(projectID)
 
 		if err == nil {
 			textures := project.Textures()
 			limit := textures.TextureCount()
-			var entity model.Textures
+			result := make([]model.TextureProperties, limit)
 
-			entity.List = make([]model.Texture, limit)
 			for id := 0; id < limit; id++ {
-				entity.List[id] = inplace.textureEntity(project, id)
+				result[id] = textures.Properties(id)
 			}
 
-			inplace.out(func() { onSuccess(entity.List) })
+			inplace.out(func() { onSuccess(result) })
 		}
 		if err != nil {
 			inplace.out(onFailure)
@@ -319,15 +318,24 @@ func (inplace *InplaceDataStore) Textures(projectID string,
 	})
 }
 
-func (inplace *InplaceDataStore) textureEntity(project *Project, textureID int) (entity model.Texture) {
-	entity.ID = fmt.Sprintf("%d", textureID)
-	entity.Href = "/projects/" + project.Name() + "/textures/" + entity.ID
-	entity.Properties = project.Textures().Properties(textureID)
-	for _, size := range model.TextureSizes() {
-		entity.Images = append(entity.Images, model.Link{Rel: string(size), Href: entity.Href + "/" + string(size)})
-	}
+// SetTextureProperties implements the model.DataStore interface.
+func (inplace *InplaceDataStore) SetTextureProperties(projectID string, textureID int, newProperties *model.TextureProperties,
+	onSuccess func(properties *model.TextureProperties), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
 
-	return
+		if err == nil {
+			textures := project.Textures()
+
+			textures.SetProperties(textureID, *newProperties)
+			result := textures.Properties(textureID)
+
+			inplace.out(func() { onSuccess(&result) })
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
 }
 
 // TextureBitmap implements the model.DataStore interface
