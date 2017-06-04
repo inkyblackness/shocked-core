@@ -790,7 +790,7 @@ func (level *Level) TileProperties(x, y int) (result model.TileProperties) {
 		properties.FloorColorIndex = intAsPointer(int((colors >> 0) & 0x00FF))
 		properties.CeilingColorIndex = intAsPointer(int((colors >> 8) & 0x00FF))
 
-		properties.FlightPullType = intAsPointer(int((entry.Flags >> 16) & 0xF))
+		properties.FlightPullType = intAsPointer(int((entry.Flags>>16)&0xF) + int((entry.Flags>>20)&0x10))
 		properties.GameOfLifeSet = boolAsPointer((entry.Flags & 0x00000040) != 0)
 
 		result.Cyberspace = &properties
@@ -891,7 +891,9 @@ func (level *Level) SetTileProperties(x, y int, properties model.TileProperties)
 			colors = (colors & 0x00FF) | (uint16(*properties.Cyberspace.CeilingColorIndex) << 8)
 		}
 		if properties.Cyberspace.FlightPullType != nil {
-			flags = (flags & ^uint32(0x000F0000)) | (uint32(*properties.Cyberspace.FlightPullType) << 16)
+			flags = (flags & ^uint32(0x010F0000)) |
+				((uint32(*properties.Cyberspace.FlightPullType) & 0xF) << 16) |
+				((uint32(*properties.Cyberspace.FlightPullType) & 0x10) << 20)
 		}
 		if properties.Cyberspace.GameOfLifeSet != nil {
 			flags = flags & ^uint32(0x00000040)
