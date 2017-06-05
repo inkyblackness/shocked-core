@@ -267,6 +267,46 @@ func (level *Level) SetTextures(newIds []int) {
 	blockStore.SetBlockData(0, buffer.Bytes())
 }
 
+// TextureAnimations returns the properties of the animation groups.
+func (level *Level) TextureAnimations() (result []model.TextureAnimation) {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+	var rawEntries [4]data.TextureAnimationEntry
+
+	result = make([]model.TextureAnimation, len(rawEntries))
+	level.readTable(42, &rawEntries)
+	for index := 0; index < len(rawEntries); index++ {
+		resultEntry := &result[index]
+		rawEntry := &rawEntries[index]
+
+		resultEntry.FrameCount = intAsPointer(int(rawEntry.FrameCount))
+		resultEntry.FrameTime = intAsPointer(int(rawEntry.FrameTime))
+		resultEntry.LoopType = intAsPointer(int(rawEntry.LoopType))
+	}
+	return
+}
+
+// SetTextureAnimation modifies the properties of identified animation group.
+func (level *Level) SetTextureAnimation(animationGroup int, properties model.TextureAnimation) {
+	level.mutex.Lock()
+	defer level.mutex.Unlock()
+
+	var rawEntries [4]data.TextureAnimationEntry
+	rawEntry := &rawEntries[animationGroup]
+
+	level.readTable(42, &rawEntries)
+	if properties.FrameCount != nil {
+		rawEntry.FrameCount = byte(*properties.FrameCount)
+	}
+	if properties.FrameTime != nil {
+		rawEntry.FrameTime = uint16(*properties.FrameTime)
+	}
+	if properties.LoopType != nil {
+		rawEntry.LoopType = data.TextureAnimationLoopType(*properties.LoopType)
+	}
+	level.writeTable(42, &rawEntries)
+}
+
 // Objects returns an array of all used objects.
 func (level *Level) Objects() []model.LevelObject {
 	level.mutex.Lock()
@@ -533,6 +573,13 @@ func (level *Level) readTable(levelBlockID int, value interface{}) {
 	reader := bytes.NewReader(blockData)
 
 	binary.Read(reader, binary.LittleEndian, value)
+}
+
+func (level *Level) writeTable(levelBlockID int, value interface{}) {
+	writer := bytes.NewBuffer(nil)
+
+	binary.Write(writer, binary.LittleEndian, value)
+	level.store.Get(res.ResourceID(4000+level.id*100+levelBlockID)).SetBlockData(0, writer.Bytes())
 }
 
 func (level *Level) isTileTypeValley(tileType data.TileType) bool {

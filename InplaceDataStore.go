@@ -295,6 +295,44 @@ func (inplace *InplaceDataStore) SetLevelTextures(projectID string, archiveID st
 	})
 }
 
+// LevelTextureAnimations implements the model.DataStore interface
+func (inplace *InplaceDataStore) LevelTextureAnimations(projectID string, archiveID string, levelID int,
+	onSuccess func(animations []model.TextureAnimation), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			level := project.Archive().Level(levelID)
+			animations := level.TextureAnimations()
+
+			inplace.out(func() { onSuccess(animations) })
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// SetLevelTextureAnimation implements the model.DataStore interface
+func (inplace *InplaceDataStore) SetLevelTextureAnimation(projectID string, archiveID string, levelID int,
+	animationGroup int, properties model.TextureAnimation,
+	onSuccess func(animations []model.TextureAnimation), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			level := project.Archive().Level(levelID)
+			level.SetTextureAnimation(animationGroup, properties)
+			animations := level.TextureAnimations()
+
+			inplace.out(func() { onSuccess(animations) })
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
 // Textures implements the model.DataStore interface
 func (inplace *InplaceDataStore) Textures(projectID string,
 	onSuccess func(textures []model.TextureProperties), onFailure model.FailureFunc) {
