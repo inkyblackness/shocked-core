@@ -413,11 +413,11 @@ func (inplace *InplaceDataStore) Tiles(projectID string, archiveID string, level
 			level := project.Archive().Level(levelID)
 			var entity model.Tiles
 
-			entity.Table = make([][]model.Tile, 64)
+			entity.Table = make([][]model.TileProperties, 64)
 			for y := 0; y < 64; y++ {
-				entity.Table[y] = make([]model.Tile, 64)
+				entity.Table[y] = make([]model.TileProperties, 64)
 				for x := 0; x < 64; x++ {
-					entity.Table[y][x] = inplace.getLevelTileEntity(project, level, x, y)
+					entity.Table[y][x] = level.TileProperties(x, y)
 				}
 			}
 
@@ -429,14 +429,6 @@ func (inplace *InplaceDataStore) Tiles(projectID string, archiveID string, level
 	})
 }
 
-func (inplace *InplaceDataStore) getLevelTileEntity(project *Project, level *Level, x int, y int) (entity model.Tile) {
-	entity.Href = "/projects/" + project.Name() + "/archive/levels/" + fmt.Sprintf("%d", level.ID()) +
-		"/tiles/" + fmt.Sprintf("%d", y) + "/" + fmt.Sprintf("%d", x)
-	entity.Properties = level.TileProperties(int(x), int(y))
-
-	return
-}
-
 // Tile implements the model.DataStore interface
 func (inplace *InplaceDataStore) Tile(projectID string, archiveID string, levelID int, x, y int,
 	onSuccess func(properties model.TileProperties), onFailure model.FailureFunc) {
@@ -445,9 +437,9 @@ func (inplace *InplaceDataStore) Tile(projectID string, archiveID string, levelI
 
 		if err == nil {
 			level := project.Archive().Level(int(levelID))
-			entity := inplace.getLevelTileEntity(project, level, x, y)
+			properties := level.TileProperties(x, y)
 
-			inplace.out(func() { onSuccess(entity.Properties) })
+			inplace.out(func() { onSuccess(properties) })
 		}
 		if err != nil {
 			inplace.out(onFailure)
@@ -465,8 +457,8 @@ func (inplace *InplaceDataStore) SetTile(projectID string, archiveID string, lev
 			level := project.Archive().Level(levelID)
 
 			level.SetTileProperties(x, y, properties)
-			result := inplace.getLevelTileEntity(project, level, x, y)
-			inplace.out(func() { onSuccess(result.Properties) })
+			result := level.TileProperties(x, y)
+			inplace.out(func() { onSuccess(result) })
 		}
 		if err != nil {
 			inplace.out(onFailure)
