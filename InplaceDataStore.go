@@ -158,6 +158,19 @@ func (inplace *InplaceDataStore) SetGameObject(projectID string, class, subclass
 	})
 }
 
+// ElectronicMessage implements the model.DataStore interface.
+func (inplace *InplaceDataStore) ElectronicMessage(projectID string, messageType model.ElectronicMessageType, id int,
+	onSuccess func(message model.ElectronicMessage), onFailure model.FailureFunc) {
+
+}
+
+// SetElectronicMessage implements the model.DataStore interface.
+func (inplace *InplaceDataStore) SetElectronicMessage(projectID string, messageType model.ElectronicMessageType,
+	id int, message model.ElectronicMessage,
+	onSuccess func(message model.ElectronicMessage), onFailure model.FailureFunc) {
+
+}
+
 // Palette implements the model.DataStore interface
 func (inplace *InplaceDataStore) Palette(projectID string, paletteID string,
 	onSuccess func(colors [256]model.Color), onFailure model.FailureFunc) {

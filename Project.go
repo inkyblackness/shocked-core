@@ -17,6 +17,7 @@ type Project struct {
 	textures    *Textures
 	palettes    *Palettes
 	gameObjects *GameObjects
+	messages    *ElectronicMessages
 	archive     *Archive
 }
 
@@ -28,6 +29,7 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 	var palettes *Palettes
 	var archive *Archive
 	var gameObjects *GameObjects
+	var messages *ElectronicMessages
 
 	textures, err = NewTextures(library)
 
@@ -39,6 +41,9 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 	}
 	if err == nil {
 		gameObjects, err = NewGameObjects(library)
+	}
+	if err == nil {
+		messages, err = NewElectronicMessages(library)
 	}
 	if err == nil {
 		fonts, err = NewFonts(library)
@@ -54,6 +59,7 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 			textures:    textures,
 			palettes:    palettes,
 			gameObjects: gameObjects,
+			messages:    messages,
 			archive:     archive}
 	}
 
@@ -83,6 +89,11 @@ func (project *Project) Palettes() *Palettes {
 // GameObjects returns the wrapper for the game objects.
 func (project *Project) GameObjects() *GameObjects {
 	return project.gameObjects
+}
+
+// ElectronicMessages returns the wrapper for the electronic messages.
+func (project *Project) ElectronicMessages() *ElectronicMessages {
+	return project.messages
 }
 
 // Archive returns the wrapper for the main archive file.
