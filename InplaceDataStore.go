@@ -161,14 +161,45 @@ func (inplace *InplaceDataStore) SetGameObject(projectID string, class, subclass
 // ElectronicMessage implements the model.DataStore interface.
 func (inplace *InplaceDataStore) ElectronicMessage(projectID string, messageType model.ElectronicMessageType, id int,
 	onSuccess func(message model.ElectronicMessage), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
 
+		if err == nil {
+			eMessages := project.ElectronicMessages()
+			var message model.ElectronicMessage
+			message, err = eMessages.Message(messageType, id)
+
+			if err == nil {
+				inplace.out(func() { onSuccess(message) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
 }
 
 // SetElectronicMessage implements the model.DataStore interface.
 func (inplace *InplaceDataStore) SetElectronicMessage(projectID string, messageType model.ElectronicMessageType,
 	id int, message model.ElectronicMessage,
 	onSuccess func(message model.ElectronicMessage), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
 
+		if err == nil {
+			eMessages := project.ElectronicMessages()
+			eMessages.SetMessage(messageType, id, message)
+			var result model.ElectronicMessage
+			result, err = eMessages.Message(messageType, id)
+
+			if err == nil {
+				inplace.out(func() { onSuccess(result) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
 }
 
 // Palette implements the model.DataStore interface
