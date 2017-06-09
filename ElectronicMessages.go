@@ -96,9 +96,6 @@ func (messages *ElectronicMessages) Message(messageType model.ElectronicMessageT
 	} else {
 		err = fmt.Errorf("Wrong message type/range: %v", messageType)
 	}
-	if err != nil {
-		fmt.Printf("%v", err)
-	}
 
 	return
 }
