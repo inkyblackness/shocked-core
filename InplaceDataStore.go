@@ -6,6 +6,7 @@ import (
 	"image/color"
 
 	"github.com/inkyblackness/res"
+	"github.com/inkyblackness/res/image"
 	"github.com/inkyblackness/shocked-core/release"
 	"github.com/inkyblackness/shocked-model"
 )
@@ -85,6 +86,54 @@ func (inplace *InplaceDataStore) Font(projectID string, fontID int,
 			if err == nil {
 				inplace.out(func() { onSuccess(font) })
 			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// Bitmap implements the model.DataStore interface
+func (inplace *InplaceDataStore) Bitmap(projectID string, key model.ResourceKey,
+	onSuccess func(model.ResourceKey, *model.RawBitmap), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			var imgBitmap image.Bitmap
+			imgBitmap, err = project.Bitmaps().Image(key)
+
+			if err == nil {
+				rawBitmap := inplace.toRawBitmap(imgBitmap)
+				inplace.out(func() { onSuccess(key, &rawBitmap) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// SetBitmap implements the model.DataStore interface
+func (inplace *InplaceDataStore) SetBitmap(projectID string, key model.ResourceKey, bmp *model.RawBitmap,
+	onSuccess func(model.ResourceKey, *model.RawBitmap), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		_, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			/*
+				bitmaps := project.Bitmaps()
+				var resultKey model.ResourceKey
+				var resultBmp model.RawBitmap
+
+				resultKey, err = bitmaps.SetImage(key, *bmp)
+				if err == nil {
+					resultBmp, err = bitmaps.Image(resultKey)
+				}
+				if err == nil {
+					inplace.out(func() { onSuccess(resultKey, &resultBmp) })
+				}
+			*/
 		}
 		if err != nil {
 			inplace.out(onFailure)
@@ -420,6 +469,21 @@ func (inplace *InplaceDataStore) SetTextureProperties(projectID string, textureI
 	})
 }
 
+func (inplace *InplaceDataStore) toRawBitmap(imgBitmap image.Bitmap) model.RawBitmap {
+	var rawBitmap model.RawBitmap
+
+	rawBitmap.Width = int(imgBitmap.ImageWidth())
+	rawBitmap.Height = int(imgBitmap.ImageHeight())
+	var pixel []byte
+
+	for row := 0; row < rawBitmap.Height; row++ {
+		pixel = append(pixel, imgBitmap.Row(row)...)
+	}
+	rawBitmap.Pixels = base64.StdEncoding.EncodeToString(pixel)
+
+	return rawBitmap
+}
+
 // TextureBitmap implements the model.DataStore interface
 func (inplace *InplaceDataStore) TextureBitmap(projectID string, textureID int, size string,
 	onSuccess func(bmp *model.RawBitmap), onFailure model.FailureFunc) {
@@ -428,16 +492,7 @@ func (inplace *InplaceDataStore) TextureBitmap(projectID string, textureID int, 
 
 		if err == nil {
 			bmp := project.Textures().Image(textureID, model.TextureSize(size))
-			var entity model.RawBitmap
-
-			entity.Width = int(bmp.ImageWidth())
-			entity.Height = int(bmp.ImageHeight())
-			var pixel []byte
-
-			for row := 0; row < entity.Height; row++ {
-				pixel = append(pixel, bmp.Row(row)...)
-			}
-			entity.Pixels = base64.StdEncoding.EncodeToString(pixel)
+			entity := inplace.toRawBitmap(bmp)
 
 			inplace.out(func() { onSuccess(&entity) })
 		}

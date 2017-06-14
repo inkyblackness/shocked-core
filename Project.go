@@ -13,6 +13,7 @@ type Project struct {
 
 	library io.StoreLibrary
 
+	bitmaps     *Bitmaps
 	fonts       *Fonts
 	textures    *Textures
 	palettes    *Palettes
@@ -24,6 +25,7 @@ type Project struct {
 // NewProject creates a new project based on given release container.
 func NewProject(name string, source release.Release, sink release.Release) (project *Project, err error) {
 	library := io.NewReleaseStoreLibrary(source, sink, 5000)
+	var bitmaps *Bitmaps
 	var fonts *Fonts
 	var textures *Textures
 	var palettes *Palettes
@@ -33,6 +35,9 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 
 	textures, err = NewTextures(library)
 
+	if err == nil {
+		bitmaps, err = NewBitmaps(library)
+	}
 	if err == nil {
 		palettes, err = NewPalettes(library)
 	}
@@ -55,6 +60,7 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 			source:      source,
 			sink:        sink,
 			library:     library,
+			bitmaps:     bitmaps,
 			fonts:       fonts,
 			textures:    textures,
 			palettes:    palettes,
@@ -69,6 +75,11 @@ func NewProject(name string, source release.Release, sink release.Release) (proj
 // Name returns the name of the project.
 func (project *Project) Name() string {
 	return project.name
+}
+
+// Bitmaps returns the wrapper for bitmaps.
+func (project *Project) Bitmaps() *Bitmaps {
+	return project.bitmaps
 }
 
 // Fonts returns the wrapper for fonts.
