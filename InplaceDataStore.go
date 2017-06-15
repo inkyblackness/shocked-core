@@ -469,6 +469,18 @@ func (inplace *InplaceDataStore) SetTextureProperties(projectID string, textureI
 	})
 }
 
+func (inplace *InplaceDataStore) fromRawBitmap(rawBitmap *model.RawBitmap) image.Bitmap {
+	var header image.BitmapHeader
+	data, _ := base64.StdEncoding.DecodeString(rawBitmap.Pixels)
+
+	header.Height = uint16(rawBitmap.Height)
+	header.Width = uint16(rawBitmap.Width)
+	header.Stride = header.Width
+	header.Type = image.CompressedBitmap
+
+	return image.NewMemoryBitmap(&header, data, nil)
+}
+
 func (inplace *InplaceDataStore) toRawBitmap(imgBitmap image.Bitmap) model.RawBitmap {
 	var rawBitmap model.RawBitmap
 
@@ -495,6 +507,27 @@ func (inplace *InplaceDataStore) TextureBitmap(projectID string, textureID int, 
 			entity := inplace.toRawBitmap(bmp)
 
 			inplace.out(func() { onSuccess(&entity) })
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// SetTextureBitmap implements the model.DataStore interface
+func (inplace *InplaceDataStore) SetTextureBitmap(projectID string, textureID int, size string, rawBitmap *model.RawBitmap,
+	onSuccess func(*model.RawBitmap), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			textures := project.Textures()
+			imgBitmap := inplace.fromRawBitmap(rawBitmap)
+			textures.SetImage(textureID, model.TextureSize(size), imgBitmap)
+			imgResult := textures.Image(textureID, model.TextureSize(size))
+			rawResult := inplace.toRawBitmap(imgResult)
+
+			inplace.out(func() { onSuccess(&rawResult) })
 		}
 		if err != nil {
 			inplace.out(onFailure)
