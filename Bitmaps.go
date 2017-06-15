@@ -49,7 +49,19 @@ func (bitmaps *Bitmaps) Image(key model.ResourceKey) (bmp image.Bitmap, err erro
 
 // SetImage requests to set the bitmap data of a resource.
 func (bitmaps *Bitmaps) SetImage(key model.ResourceKey, bmp image.Bitmap) (resultKey model.ResourceKey, err error) {
-	err = fmt.Errorf("Not Implemented")
+	if key.Type == model.ResourceTypeMfdDataImages {
+		holder := bitmaps.mfdArt.Get(res.ResourceID(key.Type))
+		if key.Index < holder.BlockCount() {
+			writer := bytes.NewBuffer(nil)
+			image.Write(writer, bmp, image.CompressedBitmap, true, 0)
+			holder.SetBlockData(key.Index, writer.Bytes())
+			resultKey = key
+		} else {
+			err = fmt.Errorf("Adding images not supported")
+		}
+	} else {
+		err = fmt.Errorf("Unsupported resource key %v", key)
+	}
 
 	return
 }

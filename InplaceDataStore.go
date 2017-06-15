@@ -115,25 +115,27 @@ func (inplace *InplaceDataStore) Bitmap(projectID string, key model.ResourceKey,
 }
 
 // SetBitmap implements the model.DataStore interface
-func (inplace *InplaceDataStore) SetBitmap(projectID string, key model.ResourceKey, bmp *model.RawBitmap,
+func (inplace *InplaceDataStore) SetBitmap(projectID string, key model.ResourceKey, rawBitmap *model.RawBitmap,
 	onSuccess func(model.ResourceKey, *model.RawBitmap), onFailure model.FailureFunc) {
 	inplace.in(func() {
-		_, err := inplace.workspace.Project(projectID)
+		project, err := inplace.workspace.Project(projectID)
 
 		if err == nil {
-			/*
-				bitmaps := project.Bitmaps()
-				var resultKey model.ResourceKey
-				var resultBmp model.RawBitmap
+			bitmaps := project.Bitmaps()
+			imgBitmap := inplace.fromRawBitmap(rawBitmap)
+			var resultKey model.ResourceKey
 
-				resultKey, err = bitmaps.SetImage(key, *bmp)
+			resultKey, err = bitmaps.SetImage(key, imgBitmap)
+
+			if err == nil {
+				var imgResult image.Bitmap
+				imgResult, err = project.Bitmaps().Image(resultKey)
+
 				if err == nil {
-					resultBmp, err = bitmaps.Image(resultKey)
+					rawResult := inplace.toRawBitmap(imgResult)
+					inplace.out(func() { onSuccess(resultKey, &rawResult) })
 				}
-				if err == nil {
-					inplace.out(func() { onSuccess(resultKey, &resultBmp) })
-				}
-			*/
+			}
 		}
 		if err != nil {
 			inplace.out(onFailure)
