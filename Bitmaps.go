@@ -13,15 +13,15 @@ import (
 
 // Bitmaps is the adapter for general bitmaps.
 type Bitmaps struct {
-	mfdArt chunk.Store
+	mfdArt [model.LanguageCount]chunk.Store
 }
 
 // NewBitmaps returns a new Bitmaps instance, if possible.
 func NewBitmaps(library io.StoreLibrary) (bitmaps *Bitmaps, err error) {
-	var mfdArt chunk.Store
+	var mfdArt [model.LanguageCount]chunk.Store
 
-	if err == nil {
-		mfdArt, err = library.ChunkStore("mfdart.res")
+	for i := 0; i < model.LanguageCount && err == nil; i++ {
+		mfdArt[i], err = library.ChunkStore(localized[i].mfdart)
 	}
 
 	if err == nil {
@@ -35,22 +35,26 @@ func NewBitmaps(library io.StoreLibrary) (bitmaps *Bitmaps, err error) {
 func (bitmaps *Bitmaps) Image(key model.ResourceKey) (bmp image.Bitmap, err error) {
 	var blockData []byte
 
-	if key.Type == model.ResourceTypeMfdDataImages {
-		holder := bitmaps.mfdArt.Get(res.ResourceID(key.Type))
+	if (key.Type == model.ResourceTypeMfdDataImages) && key.HasValidLanguage() {
+		holder := bitmaps.mfdArt[key.Language.ToIndex()].Get(res.ResourceID(key.Type))
 		if key.Index < holder.BlockCount() {
 			blockData = holder.BlockData(key.Index)
 		}
+	} else {
+		err = fmt.Errorf("Unsupported resource key: %v", key)
 	}
 
-	bmp, err = image.Read(bytes.NewReader(blockData))
+	if err == nil {
+		bmp, err = image.Read(bytes.NewReader(blockData))
+	}
 
 	return
 }
 
 // SetImage requests to set the bitmap data of a resource.
 func (bitmaps *Bitmaps) SetImage(key model.ResourceKey, bmp image.Bitmap) (resultKey model.ResourceKey, err error) {
-	if key.Type == model.ResourceTypeMfdDataImages {
-		holder := bitmaps.mfdArt.Get(res.ResourceID(key.Type))
+	if (key.Type == model.ResourceTypeMfdDataImages) && key.HasValidLanguage() {
+		holder := bitmaps.mfdArt[key.Language.ToIndex()].Get(res.ResourceID(key.Type))
 		if key.Index < holder.BlockCount() {
 			writer := bytes.NewBuffer(nil)
 			image.Write(writer, bmp, image.CompressedBitmap, true, 0)
