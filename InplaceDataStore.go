@@ -143,6 +143,48 @@ func (inplace *InplaceDataStore) SetBitmap(projectID string, key model.ResourceK
 	})
 }
 
+// Text implements the model.DataStore interface
+func (inplace *InplaceDataStore) Text(projectID string, key model.ResourceKey,
+	onSuccess func(model.ResourceKey, string), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			var text string
+			text, err = project.Texts().Text(key)
+
+			if err == nil {
+				inplace.out(func() { onSuccess(key, text) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// SetText implements the model.DataStore interface
+func (inplace *InplaceDataStore) SetText(projectID string, key model.ResourceKey, text string,
+	onSuccess func(model.ResourceKey, string), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			texts := project.Texts()
+			var resultKey model.ResourceKey
+
+			resultKey, err = texts.SetText(key, text)
+
+			if err == nil {
+				inplace.out(func() { onSuccess(resultKey, text) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
 // GameObjects implements the model.DataStore interface
 func (inplace *InplaceDataStore) GameObjects(projectID string,
 	onSuccess func(objects []model.GameObject), onFailure model.FailureFunc) {
