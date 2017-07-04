@@ -16,13 +16,14 @@ type textInfo struct {
 }
 
 var knownTexts = map[model.ResourceType]textInfo{
-	model.ResourceTypeTrapMessages:    {false, model.MaxTrapMessages},
-	model.ResourceTypeWords:           {false, model.MaxWords},
-	model.ResourceTypeLogCategories:   {false, model.MaxLogCategories},
-	model.ResourceTypeScreenMessages:  {false, model.MaxScreenMessages},
-	model.ResourceTypeAccessCardNames: {false, model.MaxAccessCardNames},
-	model.ResourceTypeDataletMessages: {false, model.MaxDataletMessages},
-	model.ResourceTypePaperTexts:      {true, model.MaxPaperTexts}}
+	model.ResourceTypeTrapMessages:     {false, model.MaxTrapMessages},
+	model.ResourceTypeWords:            {false, model.MaxWords},
+	model.ResourceTypeLogCategories:    {false, model.MaxLogCategories},
+	model.ResourceTypeScreenMessages:   {false, model.MaxScreenMessages},
+	model.ResourceTypeInfoNodeMessages: {false, model.MaxInfoNodeMessages},
+	model.ResourceTypeAccessCardNames:  {false, model.MaxAccessCardNames},
+	model.ResourceTypeDataletMessages:  {false, model.MaxDataletMessages},
+	model.ResourceTypePaperTexts:       {true, model.MaxPaperTexts}}
 
 // Texts is the adapter for general texts.
 type Texts struct {
