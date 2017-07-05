@@ -6,6 +6,7 @@ import (
 	"image/color"
 
 	"github.com/inkyblackness/res"
+	"github.com/inkyblackness/res/audio"
 	"github.com/inkyblackness/res/image"
 	"github.com/inkyblackness/shocked-core/release"
 	"github.com/inkyblackness/shocked-model"
@@ -288,6 +289,53 @@ func (inplace *InplaceDataStore) SetElectronicMessage(projectID string, messageT
 			if err == nil {
 				inplace.out(func() { onSuccess(result) })
 			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// ElectronicMessageAudio implements the model.DataStore interface.
+func (inplace *InplaceDataStore) ElectronicMessageAudio(projectID string,
+	messageType model.ElectronicMessageType, id int, language model.ResourceLanguage,
+	onSuccess func(data audio.SoundData), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			eMessages := project.ElectronicMessages()
+			var data audio.SoundData
+			data, err = eMessages.MessageAudio(messageType, id, language)
+
+			if err == nil {
+				inplace.out(func() { onSuccess(data) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// SetElectronicMessageAudio implements the model.DataStore interface.
+func (inplace *InplaceDataStore) SetElectronicMessageAudio(projectID string,
+	messageType model.ElectronicMessageType, id int, language model.ResourceLanguage, data audio.SoundData,
+	onSuccess func(), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		_, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			/*
+				eMessages := project.ElectronicMessages()
+				eMessages.SetMessage(messageType, id, message)
+				var result model.ElectronicMessage
+				result, err = eMessages.Message(messageType, id)
+
+				if err == nil {
+					inplace.out(func() { onSuccess(result) })
+				}
+			*/
 		}
 		if err != nil {
 			inplace.out(onFailure)
