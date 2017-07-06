@@ -323,19 +323,15 @@ func (inplace *InplaceDataStore) SetElectronicMessageAudio(projectID string,
 	messageType model.ElectronicMessageType, id int, language model.ResourceLanguage, data audio.SoundData,
 	onSuccess func(), onFailure model.FailureFunc) {
 	inplace.in(func() {
-		_, err := inplace.workspace.Project(projectID)
+		project, err := inplace.workspace.Project(projectID)
 
 		if err == nil {
-			/*
-				eMessages := project.ElectronicMessages()
-				eMessages.SetMessage(messageType, id, message)
-				var result model.ElectronicMessage
-				result, err = eMessages.Message(messageType, id)
+			eMessages := project.ElectronicMessages()
+			err = eMessages.SetMessageAudio(messageType, id, language, data)
 
-				if err == nil {
-					inplace.out(func() { onSuccess(result) })
-				}
-			*/
+			if err == nil {
+				inplace.out(func() { onSuccess() })
+			}
 		}
 		if err != nil {
 			inplace.out(onFailure)

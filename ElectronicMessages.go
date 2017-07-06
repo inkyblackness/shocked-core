@@ -198,3 +198,18 @@ func (messages *ElectronicMessages) MessageAudio(messageType model.ElectronicMes
 	}
 	return
 }
+
+// SetMessageAudio tries to set the audio data for given key.
+func (messages *ElectronicMessages) SetMessageAudio(messageType model.ElectronicMessageType, id int, language model.ResourceLanguage,
+	data audio.SoundData) (err error) {
+	msgRange := electronicMessageBases[messageType]
+	if ((messageType == model.ElectronicMessageTypeLog) || (messageType == model.ElectronicMessageTypeMail)) && msgRange.isRelativeIDValid(id) {
+		store := messages.citalog[language.ToIndex()]
+		data := movi.ContainSoundData(data)
+
+		store.Put(res.ResourceID(msgRange.start+id+300), chunk.NewBlockHolder(chunk.BasicChunkType, res.Media, [][]byte{data}))
+	} else {
+		err = fmt.Errorf("Wrong message type/range: %v", messageType)
+	}
+	return
+}
