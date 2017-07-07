@@ -186,6 +186,48 @@ func (inplace *InplaceDataStore) SetText(projectID string, key model.ResourceKey
 	})
 }
 
+// Audio implements the model.DataStore interface
+func (inplace *InplaceDataStore) Audio(projectID string, key model.ResourceKey,
+	onSuccess func(model.ResourceKey, audio.SoundData), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			var data audio.SoundData
+			data, err = project.Sounds().Audio(key)
+
+			if err == nil {
+				inplace.out(func() { onSuccess(key, data) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
+// SetAudio implements the model.DataStore interface
+func (inplace *InplaceDataStore) SetAudio(projectID string, key model.ResourceKey, data audio.SoundData,
+	onSuccess func(model.ResourceKey), onFailure model.FailureFunc) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			sounds := project.Sounds()
+			var resultKey model.ResourceKey
+
+			resultKey, err = sounds.SetAudio(key, data)
+
+			if err == nil {
+				inplace.out(func() { onSuccess(resultKey) })
+			}
+		}
+		if err != nil {
+			inplace.out(onFailure)
+		}
+	})
+}
+
 // GameObjects implements the model.DataStore interface
 func (inplace *InplaceDataStore) GameObjects(projectID string,
 	onSuccess func(objects []model.GameObject), onFailure model.FailureFunc) {
