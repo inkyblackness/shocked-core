@@ -77,6 +77,11 @@ func NewProject(name string, library io.StoreLibrary) (project *Project, err err
 	return
 }
 
+// Save requests to persist all currently pending changes.
+func (project *Project) Save() {
+	project.library.SaveAll()
+}
+
 // Name returns the name of the project.
 func (project *Project) Name() string {
 	return project.name

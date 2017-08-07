@@ -75,6 +75,17 @@ func (inplace *InplaceDataStore) NewProject(projectID string,
 	})
 }
 
+// SaveProject implements the model.DataStore interface
+func (inplace *InplaceDataStore) SaveProject(projectID string) {
+	inplace.in(func() {
+		project, err := inplace.workspace.Project(projectID)
+
+		if err == nil {
+			project.Save()
+		}
+	})
+}
+
 // Font implements the model.DataStore interface
 func (inplace *InplaceDataStore) Font(projectID string, fontID int,
 	onSuccess func(font *model.Font), onFailure model.FailureFunc) {
