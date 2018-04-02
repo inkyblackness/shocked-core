@@ -79,18 +79,24 @@ func (sounds *Sounds) Audio(key model.ResourceKey) (data audio.SoundData, err er
 }
 
 // SetAudio requests to set the audio of a sound resource.
-func (sounds *Sounds) SetAudio(key model.ResourceKey, data audio.SoundData) (resultKey model.ResourceKey, err error) {
+func (sounds *Sounds) SetAudio(key model.ResourceKey, soundData audio.SoundData) (resultKey model.ResourceKey, err error) {
 	info, known := knownSounds[key.Type]
 
 	if known && (key.Index < info.limit) && key.HasValidLanguage() {
 		store := sounds.store(key)
 
 		if info.contentType == chunk.Media {
-			data := movi.ContainSoundData(data)
-			store.Put(res.ResourceID(int(key.Type)+int(key.Index)),
-				&chunk.Chunk{
-					ContentType:   info.contentType,
-					BlockProvider: chunk.MemoryBlockProvider([][]byte{data})})
+			resourceID := res.ResourceID(int(key.Type) + int(key.Index))
+
+			if soundData != nil {
+				encodedData := movi.ContainSoundData(soundData)
+				store.Put(resourceID,
+					&chunk.Chunk{
+						ContentType:   info.contentType,
+						BlockProvider: chunk.MemoryBlockProvider([][]byte{encodedData})})
+			} else {
+				store.Del(resourceID)
+			}
 		}
 		resultKey = key
 	} else {
